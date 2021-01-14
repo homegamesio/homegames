@@ -1,0 +1,28 @@
+{
+  "name": "homegames",
+  "version": "0.4.2",
+  "description": "Play games at home",
+  "main": "index.js",
+  "bin": "index.js",
+  "dependencies": {
+    "homegames-core": "^0.5.0",
+    "homegames-web": "^0.5.0",
+    "webpack": "^5.13.0",
+    "webpack-cli": "^4.3.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node index.js",
+    "build": "./node_modules/webpack-cli/bin/cli.js --config node_modules/homegames-web/webpack.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/homegamesio/homegames.git"
+  },
+  "author": "Joseph Garcia",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/homegamesio/homegames/issues"
+  },
+  "homepage": "https://github.com/homegamesio/homegames#readme"
+}
