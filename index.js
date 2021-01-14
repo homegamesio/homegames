@@ -1,4 +1,8 @@
 const { fork } = require('child_process');
+const path = require('path');
 
-fork('./node_modules/homegames-core/index.js');
-fork('./node_modules/homegames-web/index.js');
+const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
+const hgWebPath = path.join(__dirname, 'node_modules/homegames-web');
+
+fork(`${hgCorePath}/index.js`);
+fork(`${hgWebPath}/index.js`);
