@@ -17,3 +17,9 @@ After:
 ```
 process.env.LINK_ENABLED = false;
 ```
+
+To have homegames.link create a DNS record pointing to your local IP (mostly helpful for HTTPS, coming very soon), add:
+process.env.AUTH_DIR = '/path/to/homegames/tokens'
+process.env.LINK_DNS_ENABLED = true;
+
+This requires a Homegames account (test.homegames.io). If these environment variables are set, the CLI will ask you to log in with your Homegames credentials, and then access/refresh tokens (NOT your password) will be stored in AUTH_DIR
