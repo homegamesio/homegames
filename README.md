@@ -1,4 +1,3 @@
-another test
 This package simply pulls in both homegames-web & homegames-core and runs them.
 
 ```
