@@ -1,12 +1,12 @@
 {
   "name": "homegames",
-  "version": "0.5.22", 
+  "version": "0.5.22",
   "description": "Play games at home",
   "main": "index.js",
   "bin": "index.js",
   "dependencies": {
-    "homegames-core": "0.5.24",
-    "homegames-web": "0.5.20",
+    "homegames-core": "0.5.26",
+    "homegames-web": "0.5.24",
     "webpack": "^5.13.0",
     "webpack-cli": "^4.3.1"
   },
