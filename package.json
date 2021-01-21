@@ -1,6 +1,6 @@
 {
   "name": "homegames",
-  "version": "0.5.5",
+  "version": "0.5.51",
   "description": "Play games at home",
   "main": "index.js",
   "bin": "index.js",

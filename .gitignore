@@ -2,4 +2,3 @@ node_modules
 .asset_cache
 .hg_certs
 .hg_auth
-config.js
