@@ -4,8 +4,15 @@
   "description": "Play games at home",
   "main": "index.js",
   "bin": "index.js",
+  "pkg": {
+    "targets": [
+      "node12-macos-x64",
+      "node12-win-x64",
+      "node12-linux-x64"
+    ]
+  },
   "dependencies": {
-    "homegames-core": "0.6.51",
+    "homegames-core": "0.6.52",
     "homegames-web": "0.6.5",
     "squish-061": "npm:squishjs@0.6.1",
     "squish-063": "npm:squishjs@0.6.3",
