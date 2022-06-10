@@ -1,24 +1,21 @@
 {
   "name": "homegames",
-  "version": "0.5.71",
+  "version": "0.5.74",
   "description": "Play games at home",
   "main": "index.js",
   "bin": "index.js",
   "pkg": {
     "targets": [
-      "node12-macos-x64",
-      "node12-win-x64",
-      "node12-linux-x64"
+      "node16-macos-x64",
+      "node16-win-x64",
+      "node16-linux-x64"
     ]
   },
   "dependencies": {
-    "homegames-core": "0.6.54",
-    "homegames-web": "0.6.5",
-    "squish-061": "npm:squishjs@0.6.1",
-    "squish-063": "npm:squishjs@0.6.3",
-    "squish-0631": "npm:squishjs@0.6.31",
-    "squish-0632": "npm:squishjs@0.6.32",
-    "squish-0633": "npm:squishjs@0.6.33",
+    "homegames-core": "0.7.55",
+    "homegames-web": "0.7.52",
+    "squish-0750": "npm:squishjs@0.7.5",
+    "squish-0751": "npm:squishjs@0.7.51",
     "webpack": "^5.13.0",
     "webpack-cli": "^4.3.1"
   },
