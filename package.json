@@ -1,6 +1,6 @@
 {
   "name": "homegames",
-  "version": "0.5.74",
+  "version": "0.5.75",
   "description": "Play games at home",
   "main": "index.js",
   "bin": "index.js",
@@ -9,10 +9,13 @@
       "node16-macos-x64",
       "node16-win-x64",
       "node16-linux-x64"
+    ],
+    "assets": [
+      "dictionary.txt"
     ]
   },
   "dependencies": {
-    "homegames-core": "0.7.55",
+    "homegames-core": "0.7.56",
     "homegames-web": "0.7.52",
     "squish-0750": "npm:squishjs@0.7.5",
     "squish-0751": "npm:squishjs@0.7.51",
