@@ -11,8 +11,6 @@
       "node16-linux-x64"
     ],
     "assets": [
-      "dictionary.txt",
-      "config.json"
     ]
   },
   "dependencies": {
