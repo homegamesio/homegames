@@ -10,14 +10,15 @@
       "node16-win-x64",
       "node16-linux-x64"
     ],
-    "assets": [
-    ]
+    "assets": []
   },
   "dependencies": {
-    "homegames-core": "0.7.58",
-    "homegames-web": "0.7.55",
+    "homegames-core": "0.7.59",
+    "homegames-web": "0.7.56",
     "squish-0750": "npm:squishjs@0.7.5",
     "squish-0751": "npm:squishjs@0.7.51",
+    "squish-0754": "npm:squishjs@0.7.54",
+    "squish-0755": "npm:squishjs@0.7.55",
     "webpack": "^5.13.0",
     "webpack-cli": "^4.3.1"
   },
