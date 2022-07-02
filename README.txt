@@ -1,3 +1,5 @@
+Live. Laugh. Love.
+
 ## GENERAL ##
 
 This executable contains the Homegames web server as well as the Homegames core server. 
