@@ -13,7 +13,7 @@
     "assets": []
   },
   "dependencies": {
-    "homegames-core": "0.7.71",
+    "homegames-core": "0.7.72",
     "homegames-web": "0.7.60",
     "squish-0756": "npm:squishjs@0.7.56",
     "webpack": "^5.13.0",
