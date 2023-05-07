@@ -23,9 +23,7 @@ if (baseDir.endsWith('src')) {
     baseDir = baseDir.substring(0, baseDir.length - 3);
 }
 
-if (fs.existsSync(`${baseDir}/.hg_auth`)) {
-    console.log('got it already');
-} else {
+if (!fs.existsSync(`${baseDir}/.hg_auth`)) {
     fs.mkdirSync(`${baseDir}/.hg_auth`);
 }
 
@@ -306,6 +304,9 @@ if (httpsEnabled) {
     } else {
         requestCertFlow().then(main);
     }
+} else {
+    main();
+}
     //doLogin().then(({username, token}) => {
     //    getCertStatus(username, token).then((_certStatus) => {
     //        console.log('here is cert status');
@@ -360,6 +361,5 @@ if (httpsEnabled) {
     //        }
     //    });
     //});
-} 
 
 
