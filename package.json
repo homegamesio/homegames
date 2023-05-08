@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "homegames-common": "^0.3.2",
-    "homegames-core": "0.7.82",
+    "homegames-core": "0.7.83",
     "homegames-web": "0.7.80",
     "unzipper": "^0.10.11",
     "webpack": "^5.13.0",
