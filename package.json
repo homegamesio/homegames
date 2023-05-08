@@ -13,12 +13,13 @@
     "assets": []
   },
   "dependencies": {
-    "homegames-core": "0.7.78",
-    "homegames-web": "0.7.73",
+    "homegames-common": "^0.3.2",
+    "homegames-core": "0.7.82",
+    "homegames-web": "0.7.80",
+    "unzipper": "^0.10.11",
     "webpack": "^5.13.0",
     "webpack-cli": "^4.3.1"
   },
-  "devDependencies": {},
   "scripts": {
     "start": "node index.js",
     "build": "./node_modules/webpack-cli/bin/cli.js --config node_modules/homegames-web/webpack.config.js"
