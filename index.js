@@ -23,9 +23,17 @@ if (baseDir.endsWith('src')) {
     baseDir = baseDir.substring(0, baseDir.length - 3);
 }
 
-if (!fs.existsSync(`${baseDir}/.hg_auth`)) {
-    fs.mkdirSync(`${baseDir}/.hg_auth`);
-}
+console.log("BASE DIR!!!");
+console.log(baseDir);
+
+
+console.log('this thing');
+const certPath = path.join(process.cwd(), "./hg-certs");
+console.log(certPath);
+
+//if (!fs.existsSync(`${baseDir}/.hg_auth`)) {
+//    fs.mkdirSync(`${baseDir}/.hg_auth`);
+//}
 
 const main = () => {
     const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
@@ -41,7 +49,7 @@ const main = () => {
 
     const args = [];
     if (httpsEnabled) {
-        args.push(`--cert-path=${baseDir}/hg-certs`);
+        args.push(`--cert-path=${certPath}`);
     }
 
     if (username) {
@@ -210,9 +218,9 @@ const getCertStatus = () => new Promise((resolve, reject) => {
 // end of stuff
 
 const verifyOrRequestCert = () => new Promise((resolve, reject) => {
-    const certDirExists = fs.existsSync(`${baseDir}/hg-certs`);
-    const localCertExists = certDirExists && fs.existsSync(`${baseDir}/hg-certs/homegames.cert`);
-    const localKeyExists = certDirExists && fs.existsSync(`${baseDir}/hg-certs/homegames.key`);
+    const certDirExists = fs.existsSync(`${certPath}`);
+    const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
+    const localKeyExists = certDirExists && fs.existsSync(`${certPath}/homegames.key`);
 
     if (!localCertExists) {
         console.log('need to request cert');
@@ -230,7 +238,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
                     } else {
                         if (certStatus.certData) {
                             const certDataBuf = Buffer.from(certStatus.certData, 'base64');
-                            fs.writeFileSync(`${baseDir}/hg-certs/homegames.cert`, certDataBuf);
+                            fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
                             console.log('fixed it!');
                             resolve();
                         }
@@ -240,7 +248,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
         }
     } else {
         console.log('need to confirm the cert is not expired');
-        const certString = fs.readFileSync(`${baseDir}/hg-certs/homegames.cert`);
+        const certString = fs.readFileSync(`${certPath}/homegames.cert`);
         const { validTo } = new X509Certificate(certString);
         const expireTime = new Date(validTo).getTime();
         if (expireTime <= Date.now()) {
@@ -260,10 +268,13 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
             console.log(keyBundle);
             const keyBuf = Buffer.from(keyBundle, 'base64');
             const keyStream = bufToStream(keyBuf);
-            const unzip = unzipper.Extract({ path: baseDir });
+            const unzip = unzipper.Extract({ path: certPath });
             keyStream.pipe(unzip);
 
             unzip.on('close', () => {
+                // hack because i have no idea why the directory is nested
+                fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
+
                 console.log('finished unzipping! waiting for cert...');
 
                 const timeoutTime = Date.now() + (60 * 3 * 1000);
@@ -283,7 +294,7 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                                     console.log('got cert!');
                                     clearInterval(checker);
                                     const certBuf = Buffer.from(currentStatus.certData, 'base64');
-                                    fs.writeFileSync(`${baseDir}/hg-certs/homegames.cert`, certBuf);
+                                    fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
                                     resolve();
                                 }
                             }
@@ -298,7 +309,6 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
 });
 
 if (httpsEnabled) {
-    console.log('sdfdsfdsfdsfdsf');
 //    if (fs.existsSync(`${baseDir}/.hg_auth/username`)) {
 //        const storedUsername = fs.readFileSync(`${baseDir}/.hg_auth/username`);
 //        console.log('stored username: ' + storedUsername);
