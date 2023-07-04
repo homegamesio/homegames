@@ -114,7 +114,7 @@ const getLocalIP = () => {
     return localIP;
 };
 
-const requestCert = (username, token) => new Promise((resolve, reject) => {
+const requestCert = () => new Promise((resolve, reject) => {
     const payload = JSON.stringify({
         localServerIp: getLocalIP()
     });
@@ -123,8 +123,8 @@ const requestCert = (username, token) => new Promise((resolve, reject) => {
     const hostname = 'certs.homegames.link';
     const path = '/request-cert'
     const headers = {
-        'hg-username': username,
-        'hg-token': token
+//        'hg-username': username,
+//        'hg-token': token
     };
 
     Object.assign(headers, {
@@ -165,7 +165,7 @@ const bufToStream = (buf) => {
     });
 };
 
-const getCertStatus = (username, token) => new Promise((resolve, reject) => {
+const getCertStatus = () => new Promise((resolve, reject) => {
     const payload = JSON.stringify({
         localServerIp: getLocalIP()
     });
@@ -174,8 +174,8 @@ const getCertStatus = (username, token) => new Promise((resolve, reject) => {
     const hostname = 'certs.homegames.link';
     const path = '/cert_status'
     const headers = {
-        'hg-username': username,
-        'hg-token': token
+//        'hg-username': username,
+//        'hg-token': token
     };
 
     Object.assign(headers, {
@@ -209,7 +209,7 @@ const getCertStatus = (username, token) => new Promise((resolve, reject) => {
 
 // end of stuff
 
-const verifyOrRequestCert = (username) => new Promise((resolve, reject) => {
+const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const certDirExists = fs.existsSync(`${baseDir}/hg-certs`);
     const localCertExists = certDirExists && fs.existsSync(`${baseDir}/hg-certs/homegames.cert`);
     const localKeyExists = certDirExists && fs.existsSync(`${baseDir}/hg-certs/homegames.key`);
@@ -217,11 +217,13 @@ const verifyOrRequestCert = (username) => new Promise((resolve, reject) => {
     if (!localCertExists) {
         console.log('need to request cert');
         if (!localKeyExists) {
-            requestCertFlow();
+            requestCertFlow().then(resolve);
         } else {
             console.log('I have a key but do not have a cert. Fetching cert...');
-            doLogin().then(({username: _username, token: _token}) => {
-                getCertStatus(_username, _token).then(_certStatus => {
+            //doLogin().then(({username: _username, token: _token}) => {
+                getCertStatus().then(_certStatus => {
+                    console.log("CERT STATUS!");
+                    console.log(_certStatus);
                     const certStatus = _certStatus && JSON.parse(_certStatus);
                     if (!certStatus || !certStatus.certFound) {
                         console.error('No cert found for this account & device. Please contact support@homegames.io');
@@ -234,7 +236,7 @@ const verifyOrRequestCert = (username) => new Promise((resolve, reject) => {
                         }
                     }
                 });
-            });
+            //});
         }
     } else {
         console.log('need to confirm the cert is not expired');
@@ -251,9 +253,9 @@ const verifyOrRequestCert = (username) => new Promise((resolve, reject) => {
 });
 
 const requestCertFlow = () => new Promise((resolve, reject) => {
-    doLogin().then(({username, token}) => {
+//    doLogin().then(({username, token}) => {
         console.log('cool!');
-        requestCert(username, token).then(keyBundle => {
+        requestCert().then(keyBundle => {
             console.log("KEY BUDNLE");
             console.log(keyBundle);
             const keyBuf = Buffer.from(keyBundle, 'base64');
@@ -273,7 +275,7 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                         clearInterval(checker);
                     } else {
                         console.log('need to check...');
-                        getCertStatus(username, token).then((_currentStatus) => {
+                        getCertStatus().then((_currentStatus) => {
                             console.log('cert info!');
                             const currentStatus = JSON.parse(_currentStatus);
                             if (currentStatus) {
@@ -292,18 +294,18 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
             });
         });
  
-    });
+//    });
 });
 
 if (httpsEnabled) {
     console.log('sdfdsfdsfdsfdsf');
-    if (fs.existsSync(`${baseDir}/.hg_auth/username`)) {
-        const storedUsername = fs.readFileSync(`${baseDir}/.hg_auth/username`);
-        console.log('stored username: ' + storedUsername);
-        verifyOrRequestCert(storedUsername).then(main);
-    } else {
-        requestCertFlow().then(main);
-    }
+//    if (fs.existsSync(`${baseDir}/.hg_auth/username`)) {
+//        const storedUsername = fs.readFileSync(`${baseDir}/.hg_auth/username`);
+//        console.log('stored username: ' + storedUsername);
+        verifyOrRequestCert().then(main);
+//    } else {
+//        requestCertFlow().then(main);
+//    }
 } else {
     main();
 }

@@ -1,5 +1,6 @@
 {
     "LINK_ENABLED": true,
+    "HTTPS_ENABLED": true,
     "HOMENAMES_PORT": 7400,
     "HOME_PORT": 9801,
     "LOG_LEVEL": "INFO",
@@ -8,6 +9,7 @@
     "IS_DEMO": false,
     "BEZEL_SIZE_Y": 15,
     "BEZEL_SIZE_X": 15,
+    "PUBLIC_GAMES": true,
     "DOWNLOADED_GAME_DIRECTORY": "hg-games",
     "LOG_PATH": "hg_log.txt"
 }
