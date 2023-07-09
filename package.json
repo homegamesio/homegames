@@ -6,16 +6,13 @@
   "bin": "index.js",
   "pkg": {
     "targets": [
-      "node16-macos-x64",
-      "node16-win-x64",
-      "node16-linux-x64"
     ],
     "assets": []
   },
   "dependencies": {
-    "homegames-common": "^0.3.2",
-    "homegames-core": "0.8.0",
-    "homegames-web": "0.8.0",
+    "homegames-common": "0.9.9",
+    "homegames-core": "0.9.91",
+    "homegames-web": "0.9.91",
     "unzipper": "^0.10.11",
     "webpack": "^5.13.0",
     "webpack-cli": "^4.3.1"
