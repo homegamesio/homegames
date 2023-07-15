@@ -6,18 +6,18 @@
   "bin": "index.js",
   "pkg": {
     "targets": [
-        "node18-win-arm64",
-        "node18-win-x64",
-        "node18-macos-arm64",
-        "node18-macos-x64",
-        "node18-linux-arm64",
-        "node18-linux-x64"
+      "node18-win-arm64",
+      "node18-win-x64",
+      "node18-macos-arm64",
+      "node18-macos-x64",
+      "node18-linux-arm64",
+      "node18-linux-x64"
     ],
     "assets": []
   },
   "dependencies": {
     "homegames-common": "0.9.9",
-    "homegames-core": "1.0.0",
+    "homegames-core": "1.0.2",
     "homegames-web": "0.9.92",
     "unzipper": "^0.10.11",
     "webpack": "^5.13.0",
