@@ -23,17 +23,7 @@ if (baseDir.endsWith('src')) {
     baseDir = baseDir.substring(0, baseDir.length - 3);
 }
 
-console.log("BASE DIR!!!");
-console.log(baseDir);
-
-
-console.log('this thing');
 const certPath = path.join(process.cwd(), "./hg-certs");
-console.log(certPath);
-
-//if (!fs.existsSync(`${baseDir}/.hg_auth`)) {
-//    fs.mkdirSync(`${baseDir}/.hg_auth`);
-//}
 
 const main = () => {
     const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
@@ -91,8 +81,6 @@ const promptUser = (promptText, hideUserInput) => new Promise((resolve, reject) 
 });
 
 const doLogin = () => new Promise((resolve, reject) => {
-    console.log('need to log in, get token');
-
     promptUser('Homegames username: ', false).then(username=> {
         promptUser('Password: ', true).then(password => {
             login(username, password).then(tokens => {
@@ -223,27 +211,26 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const localKeyExists = certDirExists && fs.existsSync(`${certPath}/homegames.key`);
 
     if (!localCertExists) {
-        console.log('need to request cert');
         if (!localKeyExists) {
+            console.log('No cert found locally. Requesting cert...');
             requestCertFlow().then(resolve);
         } else {
             console.log('I have a key but do not have a cert. Fetching cert...');
-            //doLogin().then(({username: _username, token: _token}) => {
-                getCertStatus().then(_certStatus => {
-                    console.log("CERT STATUS!");
-                    console.log(_certStatus);
-                    const certStatus = _certStatus && JSON.parse(_certStatus);
-                    if (!certStatus || !certStatus.certFound) {
-                        console.error('No cert found for this account & device. Please contact support@homegames.io');
-                    } else {
-                        if (certStatus.certData) {
-                            const certDataBuf = Buffer.from(certStatus.certData, 'base64');
-                            fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
-                            console.log('fixed it!');
-                            resolve();
-                        }
+            getCertStatus().then(_certStatus => {
+                console.log("CERT STATUS!");
+                console.log(_certStatus);
+                const certStatus = _certStatus && JSON.parse(_certStatus);
+                if (!certStatus || !certStatus.certFound) {
+                    console.error('No cert found for this account & device. Please contact support@homegames.io');
+                } else {
+                    if (certStatus.certData) {
+                        const certDataBuf = Buffer.from(certStatus.certData, 'base64');
+                        fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
+                        console.log('fixed it!');
+                        resolve();
                     }
-                });
+                }
+            });
             //});
         }
     } else {
@@ -262,10 +249,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
 
 const requestCertFlow = () => new Promise((resolve, reject) => {
 //    doLogin().then(({username, token}) => {
-        console.log('cool!');
         requestCert().then(keyBundle => {
-            console.log("KEY BUDNLE");
-            console.log(keyBundle);
             const keyBuf = Buffer.from(keyBundle, 'base64');
             const keyStream = bufToStream(keyBuf);
             const unzip = unzipper.Extract({ path: certPath });
@@ -275,28 +259,32 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                 // hack because i have no idea why the directory is nested
                 fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
 
-                console.log('finished unzipping! waiting for cert...');
+                console.log('Downloaded key. Waiting for cert...');
 
                 const timeoutTime = Date.now() + (60 * 3 * 1000);
                 let timeWaited = 0;
                 const checker = setInterval(() => {
-                    console.log('Checking for cert...');
+                    console.log('Checking...');
                     if (Date.now() >= timeoutTime) {
                         console.error('Timed out waiting for cert');
                         clearInterval(checker);
                     } else {
-                        console.log('need to check...');
                         getCertStatus().then((_currentStatus) => {
-                            console.log('cert info!');
+                            console.log('Got cert status');
                             const currentStatus = JSON.parse(_currentStatus);
+                            let success = false;
                             if (currentStatus) {
                                 if (currentStatus.certData) {
-                                    console.log('got cert!');
+                                    console.log('Cert valid!');
                                     clearInterval(checker);
                                     const certBuf = Buffer.from(currentStatus.certData, 'base64');
                                     fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
+                                    success = true;
                                     resolve();
                                 }
+                            }
+                            if (!success) {
+                                console.log('No cert status yet. Waiting...');
                             }
                         });
                     }
