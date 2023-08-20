@@ -10,6 +10,7 @@ const os = require('os');
 const readline = require('readline');
 
 const { getConfigValue, login } = require('homegames-common');
+const { app, BrowserWindow } = require('electron');
 
 const linkEnabled = getConfigValue('LINK_ENABLED', false);
 const httpsEnabled = getConfigValue('HTTPS_ENABLED', false);
@@ -24,6 +25,33 @@ if (baseDir.endsWith('src')) {
 }
 
 const certPath = path.join(process.cwd(), "./hg-certs");
+
+const electronStart = () => {
+    const createWindow = () => {
+        const mainWindow = new BrowserWindow({
+            width: 800,
+            height: 600
+        });
+
+        mainWindow.loadFile('electron.html');
+    };
+
+    app.whenReady().then(() => {
+        createWindow();
+    
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });
+    });
+    
+    app.on('window-all-closed', () => {
+        if (process.platform !== 'darwin') {
+            app.quit();
+        }
+    });
+};
 
 const main = () => {
     const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
@@ -48,6 +76,8 @@ const main = () => {
 
     fork(`${hgCorePath}/index.js`, args);
     fork(`${hgWebPath}/index.js`, args);
+
+    electronStart();
 };
 
 // start of stuff
