@@ -15,13 +15,6 @@ const { app, utilityProcess, BrowserWindow } = require('electron');
 const linkEnabled = getConfigValue('LINK_ENABLED', false);
 const httpsEnabled = getConfigValue('HTTPS_ENABLED', false);
 
-//log.transports.file.resolvePath = () => path.resolve('logs/main.log');
-
-log.info('bggigigi ayy');
-console.log = log.log;
-console.log('just set it does this work lol idk');
-
-
 process.env.LINK_ENABLED = linkEnabled;
 process.env.HTTPS_ENABLED = httpsEnabled;
 
@@ -199,114 +192,116 @@ const main = () => {
 //    });
 //});
 
-//const getLocalIP = () => {
-//    const ifaces = os.networkInterfaces();
-//    let localIP;
+const getLocalIP = () => {
+    const ifaces = os.networkInterfaces();
+    let localIP;
+
+    Object.keys(ifaces).forEach((ifname) => {
+        ifaces[ifname].forEach((iface) => {
+            if ('IPv4' !== iface.family || iface.internal) {
+                return;
+            }
+            localIP = localIP || iface.address;
+        });
+    });
+
+    return localIP;
+};
+
+const requestCert = () => new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+        localServerIp: getLocalIP()
+    });
+
+    const port = 443;
+    const hostname = 'certs.homegames.link';
+    const path = '/request-cert'
+    const headers = {
+//        'hg-username': username,
+//        'hg-token': token
+    };
+
+    Object.assign(headers, {
+        'Content-Type': 'application/json',
+        'Content-Length': payload.length
+    });
+
+    const options = {
+        hostname,
+        path,
+        port,
+        method: 'POST',
+        headers
+    };
+
+    let responseData = '';
+
+    const req = https.request(options, (res) => {
+        res.on('data', (chunk) => {
+            responseData += chunk;
+        });
+
+        res.on('end', () => {
+            log.info('Request cert success');
+            resolve(responseData);
+        });
+    });
+
+    log.info('Request cert start');
+    req.write(payload);
+    req.end();
+});
 //
-//    Object.keys(ifaces).forEach((ifname) => {
-//        ifaces[ifname].forEach((iface) => {
-//            if ('IPv4' !== iface.family || iface.internal) {
-//                return;
-//            }
-//            localIP = localIP || iface.address;
-//        });
-//    });
+const bufToStream = (buf) => {
+    return new Readable({
+        read() {
+            this.push(buf);
+            this.push(null);
+        }
+    });
+};
 //
-//    return localIP;
-//};
-//
-//const requestCert = () => new Promise((resolve, reject) => {
-//    const payload = JSON.stringify({
-//        localServerIp: getLocalIP()
-//    });
-//
-//    const port = 443;
-//    const hostname = 'certs.homegames.link';
-//    const path = '/request-cert'
-//    const headers = {
-////        'hg-username': username,
-////        'hg-token': token
-//    };
-//
-//    Object.assign(headers, {
-//        'Content-Type': 'application/json',
-//        'Content-Length': payload.length
-//    });
-//
-//    const options = {
-//        hostname,
-//        path,
-//        port,
-//        method: 'POST',
-//        headers
-//    };
-//
-//    let responseData = '';
-//
-//    const req = https.request(options, (res) => {
-//        res.on('data', (chunk) => {
-//            responseData += chunk;
-//        });
-//
-//        res.on('end', () => {
-//            resolve(responseData);
-//        });
-//    });
-//
-//    req.write(payload);
-//    req.end();
-//});
-//
-//const bufToStream = (buf) => {
-//    return new Readable({
-//        read() {
-//            this.push(buf);
-//            this.push(null);
-//        }
-//    });
-//};
-//
-//const getCertStatus = () => new Promise((resolve, reject) => {
-//    const payload = JSON.stringify({
-//        localServerIp: getLocalIP()
-//    });
-//
-//    const port = 443;
-//    const hostname = 'certs.homegames.link';
-//    const path = '/cert_status'
-//    const headers = {
-////        'hg-username': username,
-////        'hg-token': token
-//    };
-//
-//    Object.assign(headers, {
-//        'Content-Type': 'application/json',
-//        'Content-Length': payload.length
-//    });
-//
-//    const options = {
-//        hostname,
-//        path,
-//        port,
-//        method: 'POST',
-//        headers
-//    };
-//
-//    let responseData = '';
-//
-//    const req = https.request(options, (res) => {
-//        res.on('data', (chunk) => {
-//            responseData += chunk;
-//        });
-//
-//        res.on('end', () => {
-//            resolve(responseData);
-//        });
-//    });
-//
-//    req.write(payload);
-//    req.end();
-//});
+const getCertStatus = () => new Promise((resolve, reject) => {
+    const payload = JSON.stringify({
+        localServerIp: getLocalIP()
+    });
+
+    const port = 443;
+    const hostname = 'certs.homegames.link';
+    const path = '/cert_status'
+    const headers = {
+//        'hg-username': username,
+//        'hg-token': token
+    };
+
+    Object.assign(headers, {
+        'Content-Type': 'application/json',
+        'Content-Length': payload.length
+    });
+
+    const options = {
+        hostname,
+        path,
+        port,
+        method: 'POST',
+        headers
+    };
+
+    let responseData = '';
+
+    const req = https.request(options, (res) => {
+        res.on('data', (chunk) => {
+            responseData += chunk;
+        });
+
+        res.on('end', () => {
+            resolve(responseData);
+        });
+    });
+
+    req.write(payload);
+    req.end();
+});
 //
 //// end of stuff
 //
@@ -318,7 +313,10 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     if (!localCertExists) {
         if (!localKeyExists) {
             console.log('No cert found locally. Requesting cert...');
-            requestCertFlow().then(resolve);
+            requestCertFlow().then(resolve).catch(err => {
+                log.error('Failure getting cert');
+                log.error(err);
+            });
         } else {
             console.log('I have a key but do not have a cert. Fetching cert...');
             getCertStatus().then(_certStatus => {
@@ -352,64 +350,63 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     }
 });
 //
-//const requestCertFlow = () => new Promise((resolve, reject) => {
-////    doLogin().then(({username, token}) => {
-//        requestCert().then(keyBundle => {
-//            const keyBuf = Buffer.from(keyBundle, 'base64');
-//            const keyStream = bufToStream(keyBuf);
-//            const unzip = unzipper.Extract({ path: certPath });
-//            keyStream.pipe(unzip);
-//
-//            unzip.on('close', () => {
-//                // hack because i have no idea why the directory is nested
-//                fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
-//
-//                console.log('Downloaded key. Waiting for cert...');
-//
-//                const timeoutTime = Date.now() + (60 * 3 * 1000);
-//                let timeWaited = 0;
-//                const checker = setInterval(() => {
-//                    console.log('Checking...');
-//                    if (Date.now() >= timeoutTime) {
-//                        console.error('Timed out waiting for cert');
-//                        clearInterval(checker);
-//                    } else {
-//                        getCertStatus().then((_currentStatus) => {
-//                            console.log('Got cert status');
-//                            const currentStatus = JSON.parse(_currentStatus);
-//                            let success = false;
-//                            if (currentStatus) {
-//                                if (currentStatus.certData) {
-//                                    console.log('Cert valid!');
-//                                    clearInterval(checker);
-//                                    const certBuf = Buffer.from(currentStatus.certData, 'base64');
-//                                    fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
-//                                    success = true;
-//                                    resolve();
-//                                }
-//                            }
-//                            if (!success) {
-//                                console.log('No cert status yet. Waiting...');
-//                            }
-//                        });
-//                    }
-//
-//                }, 20 * 1000);
-//            });
-//        });
-// 
-////    });
-//});
+const requestCertFlow = () => new Promise((resolve, reject) => {
+    log.info('what the heck mane');
+//    doLogin().then(({username, token}) => {
+        requestCert().then(keyBundle => {
+            log.info('the heck 2');
+            const keyBuf = Buffer.from(keyBundle, 'base64');
+            const keyStream = bufToStream(keyBuf);
+            const unzip = unzipper.Extract({ path: certPath });
+            keyStream.pipe(unzip);
+
+            unzip.on('close', () => {
+                // hack because i have no idea why the directory is nested
+                fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
+
+                log.info('Downloaded key. Waiting for cert...');
+
+                const timeoutTime = Date.now() + (60 * 3 * 1000);
+                let timeWaited = 0;
+                const checker = setInterval(() => {
+                    log.info('Checking...');
+                    if (Date.now() >= timeoutTime) {
+                        log.error('Timed out waiting for cert');
+                        clearInterval(checker);
+                    } else {
+                        getCertStatus().then((_currentStatus) => {
+                            log.info('Got cert status');
+                            const currentStatus = JSON.parse(_currentStatus);
+                            let success = false;
+                            if (currentStatus) {
+                                if (currentStatus.certData) {
+                                    log.info('Cert valid!');
+                                    clearInterval(checker);
+                                    const certBuf = Buffer.from(currentStatus.certData, 'base64');
+                                    fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
+                                    success = true;
+                                    resolve();
+                                }
+                            }
+                            if (!success) {
+                                console.log('No cert status yet. Waiting...');
+                            }
+                        });
+                    }
+
+                }, 20 * 1000);
+            });
+        }).catch(err => {
+            log.error('Failed requesting cert');
+            log.error(err);
+            reject(err);
+        });
+ 
+//    });
+});
 
 if (httpsEnabled) {
-    if (fs.existsSync(`${baseDir}/.hg_auth/username`)) {
-        const storedUsername = fs.readFileSync(`${baseDir}/.hg_auth/username`);
-        console.log('stored username: ' + storedUsername);
-        verifyOrRequestCert().then(main);
-    } else {
-   //     requestCertFlow().then(main);
-    main();
-    }
+    verifyOrRequestCert().then(main);
 } else {
     main();
 }
