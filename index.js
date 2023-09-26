@@ -24,13 +24,54 @@ if (baseDir.endsWith('src')) {
     baseDir = baseDir.substring(0, baseDir.length - 3);
 }
 
+let checkboxes = [
+    {
+        text: 'Local key',
+        done: false
+    },
+    {
+        text: 'Local certificate',
+        done: false
+    }
+];
+
+let mainWindow;
+
+let sendUpdateHelper = (payload) => { 
+    if (!mainWindow) {
+        console.log("AHHHHHHHHHHH");
+    }
+    mainWindow && mainWindow.webContents.send('update', payload);
+};
+
+let sendUpdate = (newStatus, description) => {
+    sendUpdateHelper({
+        checkboxes,
+        newStatus, 
+        description
+    });
+};
+
+const sendReady = () => {
+    sendUpdateHelper({
+        checkboxes,
+        newStatus: 'Ready',
+        description: 'Homegames is ready'
+    });
+
+    mainWindow && mainWindow.webContents.send('ready', '');
+};
+
 const certPath = path.join(getAppDataPath(), '.hg-certs');
 
 const electronStart = () => {
     const createWindow = () => {
-        const mainWindow = new BrowserWindow({
+        mainWindow = new BrowserWindow({
             width: 800,
-            height: 600
+            height: 600,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js')
+            }
         });
 
         mainWindow.loadFile('electron.html');
@@ -46,6 +87,12 @@ const electronStart = () => {
                 createWindow();
             }
         });
+        
+        if (httpsEnabled) {
+            verifyOrRequestCert().then(main);
+        } else {
+            main();
+        }
     });
     
     app.on('window-all-closed', () => {
@@ -61,53 +108,13 @@ const main = () => {
 
     const webBundlePath = path.join(__dirname, 'node_modules/homegames-web/web/bundle.js');
 
-    let username;
-
-    if (fs.existsSync(`${baseDir}/.hg_auth`) && fs.existsSync(`${baseDir}/.hg_auth/username`)) {
-        username = fs.readFileSync(`${baseDir}/.hg_auth/username`);
-    }
-
     const args = [];
     if (httpsEnabled) {
         args.push(`--cert-path=${certPath}`);
     }
 
-    if (username) {
-        args.push(`--username=${username}`);
-    }
-
-    const watt = app.getPath('exe');
-    const watt2 = app.getPath('module');
-    log.info('waeeee');
-    log.info(watt);
-    log.info(watt2);
-
-    log.info('here are args');
-    log.info(args);
-    log.info(hgCorePath);
-    log.info(hgWebPath);
-
-    log.info('does this exist');
-    log.info(fs.existsSync(`${hgWebPath}/index.js`));
-    log.info(fs.existsSync(`${hgWebPath}`));
-    log.info(fs.existsSync(watt));
-
-//    const stuff = spawn('/Users/josephgarcia/Desktop/ayy.js');
-//    stuff.on('error', (err) => {
-//        log.info('error from stuff');
-//        log.info(err);
-//    });
-
-    log.info('what the heck herere');
-    log.info(require.resolve('homegames-web'));
-//    const wat = utilityProcess.fork('/Users/josephgarcia/homegames/homegames-core/index.js');//require.resolve('./ayy.js'));
-    log.info('this is updatedplspsspsls bnbbfbf');
-    // const webProc = utilityProcess.fork('/Users/josephgarcia/homegames/homegames-web/index.js', args);//require.resolve('homegames-web'), args);
-   const webProc = utilityProcess.fork(require.resolve('homegames-web'), args);//`/Users/josephgarcia/homegames/homegames-core/ayy.js`);//, [], {stdio: 'ignore'} );//, args);
-    const coreProc = utilityProcess.fork(require.resolve('homegames-core'), args);//'/Users/josephgarcia/homegames/homegames-core/index.js', args);//`${hgCorePath}/index.js`, args);
-    // const coreProc = utilityProcess.fork('/Users/josephgarcia/homegames/homegames-core/index.js', args);//`${hgCorePath}/index.js`, args);
-
-    log.info('nnncncn cool cool jbkhjkj');
+    const webProc = utilityProcess.fork(require.resolve('homegames-web'), args);
+    const coreProc = utilityProcess.fork(require.resolve('homegames-core'), args);
 
     webProc.on('message', (msg) => {
         log.info('got stdout from web process');
@@ -145,7 +152,7 @@ const main = () => {
         log.error(err);
     });
 
-    electronStart();
+    sendReady();
 };
 
 // start of stuff
@@ -313,23 +320,29 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     if (!localCertExists) {
         if (!localKeyExists) {
             console.log('No cert found locally. Requesting cert...');
+            sendUpdate('Requesting cert', 'Requesting a TLS certificate from the Homegames API');
             requestCertFlow().then(resolve).catch(err => {
+                sendUpdate('Failure requesting cert', 'Encountered a failure when requesting cert: ' + err);
                 log.error('Failure getting cert');
                 log.error(err);
             });
         } else {
             console.log('I have a key but do not have a cert. Fetching cert...');
+            sendUpdate('I have a key but do not have a cert.', 'Fetching certificate');
             getCertStatus().then(_certStatus => {
                 console.log("CERT STATUS!");
                 console.log(_certStatus);
+                sendUpdate('Checking cert status', _certStatus); 
                 const certStatus = _certStatus && JSON.parse(_certStatus);
                 if (!certStatus || !certStatus.certFound) {
+                    sendUpdate('Error', 'Please contact support@homegames.io');
                     console.error('No cert found for this account & device. Please contact support@homegames.io');
                 } else {
                     if (certStatus.certData) {
                         const certDataBuf = Buffer.from(certStatus.certData, 'base64');
                         fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
                         console.log('fixed it!');
+                        sendUpdate('Got cert data', 'Downloaded cert');
                         resolve();
                     }
                 }
@@ -338,23 +351,24 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
         }
     } else {
         console.log('need to confirm the cert is not expired');
+        sendUpdate('Confirming cert status', 'Confirming valid local cert');
         const certString = fs.readFileSync(`${certPath}/homegames.cert`);
         const { validTo } = new X509Certificate(certString);
         const expireTime = new Date(validTo).getTime();
         if (expireTime <= Date.now()) {
+            sendUpdate('Cert expired', 'Getting new cert');
             requestCertFlow().then(resolve);
         } else {
             console.log('i know i have a valid cert');
+            sendUpdate('certConfirmed', 'Confirmed valid local certificate');
             resolve();
         }
     }
 });
 //
 const requestCertFlow = () => new Promise((resolve, reject) => {
-    log.info('what the heck mane');
 //    doLogin().then(({username, token}) => {
         requestCert().then(keyBundle => {
-            log.info('the heck 2');
             const keyBuf = Buffer.from(keyBundle, 'base64');
             const keyStream = bufToStream(keyBuf);
             const unzip = unzipper.Extract({ path: certPath });
@@ -405,9 +419,6 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
 //    });
 });
 
-if (httpsEnabled) {
-    verifyOrRequestCert().then(main);
-} else {
-    main();
-}
+electronStart();
+
 
