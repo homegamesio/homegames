@@ -37,7 +37,10 @@
   "build": {
     "appId": "wat.homegames",
     "mac": {
-      "category": "ayy.lmao"
+      "category": "ayy.lmao",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "type": "distribution"
     }
   },
   "scripts": {

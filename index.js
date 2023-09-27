@@ -38,9 +38,6 @@ let checkboxes = [
 let mainWindow;
 
 let sendUpdateHelper = (payload) => { 
-    if (!mainWindow) {
-        console.log("AHHHHHHHHHHH");
-    }
     mainWindow && mainWindow.webContents.send('update', payload);
 };
 
@@ -247,10 +244,14 @@ const requestCert = () => new Promise((resolve, reject) => {
         res.on('data', (chunk) => {
             responseData += chunk;
         });
-
+    
         res.on('end', () => {
             log.info('Request cert success');
-            resolve(responseData);
+            if (res.statusCode > 199 && res.statusCode < 300) {
+                resolve(responseData);
+            } else {
+                reject(responseData);
+            }
         });
     });
 
