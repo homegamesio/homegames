@@ -110,43 +110,56 @@ const main = () => {
         args.push(`--cert-path=${certPath}`);
     }
 
-    const webProc = utilityProcess.fork(require.resolve('homegames-web'), args);
-    const coreProc = utilityProcess.fork(require.resolve('homegames-core'), args);
+    const webLocation = require.resolve('homegames-web');
+    const webProc = utilityProcess.fork(webLocation, args);
+    sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
+
+    const coreLocation = require.resolve('homegames-core');
+    const coreProc = utilityProcess.fork(coreLocation, args);
+    sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
 
     webProc.on('message', (msg) => {
         log.info('got stdout from web process');
         log.info(msg);
+        sendUpdate('Message from web process', msg);
     });
 
     webProc.on('close', (code) => {
         log.info('web process closed with code ' + code);
+        sendUpdate('Web process closed', `Exit code: ${code}`);
     });
 
     webProc.on('error', (err) => {
         log.error('web process error');
         log.error(err);
+        sendUpdate('Web process error', err);
     });
 
     webProc.on('exit', (code) => {
         log.info('web the fuck process exited with code ' + code);
+        sendUpdate('Web process exited', `Exit code: ${code}`);
     });
 
     coreProc.on('message', (msg) => {
         log.info('got data from core process');
         log.info(msg);
+        sendUpdate('Message from web process', msg);
     });
 
     coreProc.on('close', (code) => {
         log.info('core process closed with code ' + code);
+        sendUpdate('Core process closed', `Exit code: ${code}`);
     });
 
     coreProc.on('exit', (code) => {
         log.info('core process exited with code ' + code);
+        sendUpdate('Core process exited', `Exit code: ${code}`);
     });
 
     coreProc.on('error', (err) => {
         log.error('core process error');
         log.error(err);
+        sendUpdate('Core process error', err);
     });
 
     sendReady();
@@ -380,22 +393,27 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                 fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
 
                 log.info('Downloaded key. Waiting for cert...');
+                sendUpdate('Key created', 'Waiting for certificate from Homegames API');
 
                 const timeoutTime = Date.now() + (60 * 3 * 1000);
                 let timeWaited = 0;
                 const checker = setInterval(() => {
                     log.info('Checking...');
+                    sendUpdate('Checking cert status', 'Fetching current status from Homegames API');
                     if (Date.now() >= timeoutTime) {
                         log.error('Timed out waiting for cert');
+                        sendUpdate('Error', 'Timed out waiting for certificate. Try again later or contact support@homegames.io for help');
                         clearInterval(checker);
                     } else {
                         getCertStatus().then((_currentStatus) => {
                             log.info('Got cert status');
+                            sendUpdate('Fetched cert status', 'Successfully fetched cert data');
                             const currentStatus = JSON.parse(_currentStatus);
                             let success = false;
                             if (currentStatus) {
                                 if (currentStatus.certData) {
                                     log.info('Cert valid!');
+                                    sendUpdate('Valid cert', 'Got valid cert from Homegames API');
                                     clearInterval(checker);
                                     const certBuf = Buffer.from(currentStatus.certData, 'base64');
                                     fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
@@ -405,6 +423,7 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                             }
                             if (!success) {
                                 console.log('No cert status yet. Waiting...');
+                                sendUpdate('Cert not ready yet', 'Waiting...');
                             }
                         });
                     }

@@ -5,7 +5,7 @@
     <body>
         <div id="main">
             <h1 id="logo">
-                <img src="build/logo.png"></img>
+                <img src="static/logo.png"></img>
             </h1>
             <div id="logs"></div>
             <div id="content"></div>
@@ -52,10 +52,12 @@
             text-align: left;
             height: 62vh;
             padding: 1.5vh;
-            background: #4D4D4D;
+            background: rgba(26, 26, 26, 255);
             overflow: scroll;
             font-family: monospace;
             font-weight: bold;
+            max-height: 62vh;
+            border: 15px solid #4D4D4D;
         }
         
         #content {
