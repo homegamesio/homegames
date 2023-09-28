@@ -110,6 +110,8 @@ const main = () => {
         args.push(`--cert-path=${certPath}`);
     }
 
+    sendUpdate('Using app data path', getAppDataPath());
+
     const webLocation = require.resolve('homegames-web');
     const webProc = utilityProcess.fork(webLocation, args);
     sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
