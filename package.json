@@ -19,7 +19,7 @@
     "electron-log": "^4.4.8",
     "electron-squirrel-startup": "^1.0.0",
     "homegames-common": "1.0.2",
-    "homegames-core": "1.0.12",
+    "homegames-core": "1.0.14",
     "homegames-web": "0.9.422",
     "unzipper": "^0.10.11"
   },
