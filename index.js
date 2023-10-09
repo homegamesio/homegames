@@ -112,12 +112,14 @@ const main = () => {
 
     sendUpdate('Using app data path', getAppDataPath());
 
+    const loggerLocation = require.resolve('electron-log');
+
     const webLocation = require.resolve('homegames-web');
-    const webProc = utilityProcess.fork(webLocation, args);
+    const webProc = utilityProcess.fork(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation }});
     sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
 
     const coreLocation = require.resolve('homegames-core');
-    const coreProc = utilityProcess.fork(coreLocation, args);
+    const coreProc = utilityProcess.fork(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation }});
     sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
 
     webProc.on('message', (msg) => {
