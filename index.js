@@ -115,11 +115,12 @@ const main = () => {
     const loggerLocation = require.resolve('electron-log');
 
     const webLocation = require.resolve('homegames-web');
-    const webProc = utilityProcess.fork(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation }});
+    const tingEnv = process.env;
+    const webProc = utilityProcess.fork(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
     sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
 
     const coreLocation = require.resolve('homegames-core');
-    const coreProc = utilityProcess.fork(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation }});
+    const coreProc = utilityProcess.fork(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
     sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
 
     webProc.on('message', (msg) => {
@@ -368,7 +369,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
             //});
         }
     } else {
-        console.log('need to confirm the cert is not expired');
+        log.info('need to confirm the cert is not expired');
         sendUpdate('Confirming cert status', 'Confirming valid local cert');
         const certString = fs.readFileSync(`${certPath}/homegames.cert`);
         const { validTo } = new X509Certificate(certString);
@@ -377,7 +378,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
             sendUpdate('Cert expired', 'Getting new cert');
             requestCertFlow().then(resolve);
         } else {
-            console.log('i know i have a valid cert');
+            log.info('i know i have a valid cert');
             sendUpdate('certConfirmed', 'Confirmed valid local certificate');
             resolve();
         }
