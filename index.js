@@ -141,7 +141,7 @@ const main = () => {
     });
 
     webProc.on('exit', (code) => {
-        log.info('web the fuck process exited with code ' + code);
+        log.info('web process exited with code ' + code);
         sendUpdate('Web process exited', `Exit code: ${code}`);
     });
 
@@ -338,7 +338,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
 
     if (!localCertExists) {
         if (!localKeyExists) {
-            console.log('No cert found locally. Requesting cert...');
+            log.info('No cert found locally. Requesting cert...');
             sendUpdate('Requesting cert', 'Requesting a TLS certificate from the Homegames API');
             requestCertFlow().then(resolve).catch(err => {
                 sendUpdate('Failure requesting cert', 'Encountered a failure when requesting cert: ' + err);
@@ -346,11 +346,10 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
                 log.error(err);
             });
         } else {
-            console.log('I have a key but do not have a cert. Fetching cert...');
+            log.info('I have a key but do not have a cert. Fetching cert...');
             sendUpdate('I have a key but do not have a cert.', 'Fetching certificate');
             getCertStatus().then(_certStatus => {
-                console.log("CERT STATUS!");
-                console.log(_certStatus);
+                log.info("CERT STATUS! " + _certStatus);
                 sendUpdate('Checking cert status', _certStatus); 
                 const certStatus = _certStatus && JSON.parse(_certStatus);
                 if (!certStatus || !certStatus.certFound) {
@@ -360,7 +359,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
                     if (certStatus.certData) {
                         const certDataBuf = Buffer.from(certStatus.certData, 'base64');
                         fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
-                        console.log('fixed it!');
+                        log.info('fixed it!');
                         sendUpdate('Got cert data', 'Downloaded cert');
                         resolve();
                     }
@@ -427,7 +426,7 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                                 }
                             }
                             if (!success) {
-                                console.log('No cert status yet. Waiting...');
+                                log.info('No cert status yet. Waiting...');
                                 sendUpdate('Cert not ready yet', 'Waiting...');
                             }
                         });
