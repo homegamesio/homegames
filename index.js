@@ -62,6 +62,10 @@ const sendReady = () => {
 const certPath = path.join(getAppDataPath(), '.hg-certs');
 
 const electronStart = () => {
+    if (!app) {
+        return;
+    }
+
     const createWindow = () => {
         mainWindow = new BrowserWindow({
             width: 800,
@@ -83,13 +87,7 @@ const electronStart = () => {
             if (BrowserWindow.getAllWindows().length === 0) {
                 createWindow();
             }
-        });
-        
-        if (httpsEnabled) {
-            verifyOrRequestCert().then(main);
-        } else {
-            main();
-        }
+        });        
     });
     
     app.on('window-all-closed', () => {
@@ -116,11 +114,14 @@ const main = () => {
 
     const webLocation = require.resolve('homegames-web');
     const tingEnv = process.env;
-    const webProc = utilityProcess.fork(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
+    
+    const forkFunc = utilityProcess ? utilityProcess.fork : fork;
+
+    const webProc = forkFunc(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
     sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
 
     const coreLocation = require.resolve('homegames-core');
-    const coreProc = utilityProcess.fork(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
+    const coreProc = forkFunc(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
     sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
 
     webProc.on('message', (msg) => {
@@ -397,6 +398,20 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
 //    });
 });
 
-electronStart();
+
+const homegamesMain = () => {
+    if (httpsEnabled) {
+        verifyOrRequestCert().then(main);
+    } else {
+        main();
+    }
+}
+
+if (app) {
+    electronStart();
+    homegamesMain();
+} else {
+    homegamesMain();
+}
 
 
