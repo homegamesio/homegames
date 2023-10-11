@@ -28,19 +28,16 @@
     "webpack-cli": "^4.3.1"
   },
   "build": {
-    "appId": "wat.homegames",
+    "appId": "homegames",
     "mac": {
-      "category": "ayy.lmao",
+      "category": "ayylmao",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "type": "distribution"
     }
   },
   "scripts": {
-    "start": "electron-forge start",
-    "build": "./node_modules/webpack-cli/bin/cli.js --config node_modules/homegames-web/webpack.config.js",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "build": "./node_modules/webpack-cli/bin/cli.js --config node_modules/homegames-web/webpack.config.js"
   },
   "repository": {
     "type": "git",

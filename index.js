@@ -170,50 +170,6 @@ const main = () => {
     sendReady();
 };
 
-// start of stuff
-
-//const promptUser = (promptText, hideUserInput) => new Promise((resolve, reject) => {
-//
-//    let muted = false;
-//    
-//    const mutableStdout = new Writable({
-//        write: (chunk, encoding, callback) => {
-//            if (!muted) {
-//                process.stdout.write(chunk, encoding);
-//            }
-//            callback && callback();
-//        }
-//    });
-//
-//    const rl = readline.createInterface({
-//        input: process.stdin,
-//        output: mutableStdout,
-//        terminal: true
-//    });
-//
-//    rl.question(`${promptText}\n`, function(userInput) {
-//        rl.close();
-//        resolve(userInput);
-//    });
-//
-//    muted = hideUserInput;
-//
-//});
-//
-//const doLogin = () => new Promise((resolve, reject) => {
-//    promptUser('Homegames username: ', false).then(username=> {
-//        promptUser('Password: ', true).then(password => {
-//            login(username, password).then(tokens => {
-//                fs.writeFileSync(`${baseDir}/.hg_auth/username`, username);
-//                resolve({ username, token: tokens.accessToken });
-//            }).catch(err => {
-//                console.error(err);
-//                reject(err);
-//            });
-//        });
-//    });
-//});
-
 const getLocalIP = () => {
     const ifaces = os.networkInterfaces();
     let localIP;
@@ -328,9 +284,7 @@ const getCertStatus = () => new Promise((resolve, reject) => {
     req.write(payload);
     req.end();
 });
-//
-//// end of stuff
-//
+
 const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const certDirExists = fs.existsSync(`${certPath}`);
     const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
