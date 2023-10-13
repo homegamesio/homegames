@@ -1,4 +1,4 @@
-const { fork } = require('child_process');
+const { spawn, fork } = require('child_process');
 const https = require('https');
 const { Readable, Writable } = require('stream');
 const unzipper = require('unzipper');
@@ -8,8 +8,9 @@ const process = require('process');
 const fs = require('fs');
 const os = require('os');
 const readline = require('readline');
-
-const { getConfigValue, login } = require('homegames-common');
+const log = require('electron-log');
+const { getConfigValue, login, getAppDataPath } = require('homegames-common');
+const { app, utilityProcess, BrowserWindow } = require('electron');
 
 const linkEnabled = getConfigValue('LINK_ENABLED', false);
 const httpsEnabled = getConfigValue('HTTPS_ENABLED', false);
@@ -23,7 +24,80 @@ if (baseDir.endsWith('src')) {
     baseDir = baseDir.substring(0, baseDir.length - 3);
 }
 
-const certPath = path.join(process.cwd(), "./hg-certs");
+let checkboxes = [
+    {
+        text: 'Local key',
+        done: false
+    },
+    {
+        text: 'Local certificate',
+        done: false
+    }
+];
+
+let mainWindow;
+
+let sendUpdateHelper = (payload) => { 
+    mainWindow && mainWindow.webContents.send('update', payload);
+};
+
+let sendUpdate = (newStatus, description) => {
+    sendUpdateHelper({
+        checkboxes,
+        newStatus, 
+        description
+    });
+};
+
+const sendReady = () => {
+    sendUpdateHelper({
+        checkboxes,
+        newStatus: 'Ready',
+        description: 'Homegames is ready'
+    });
+
+    mainWindow && mainWindow.webContents.send('ready', '');
+};
+
+const certPath = path.join(getAppDataPath(), '.hg-certs');
+
+const electronStart = () => new Promise((resolve, reject) => {
+    if (!app) {
+        return;
+    }
+
+    const createWindow = () => {
+        mainWindow = new BrowserWindow({
+            width: 800,
+            height: 600,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js')
+            }
+        });
+
+        mainWindow.loadFile('electron.html');
+    };
+
+    app.setAppLogsPath();
+
+    app.whenReady().then(() => {
+        createWindow();
+    
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });        
+
+        resolve();
+    });
+    
+    app.on('window-all-closed', () => {
+        if (process.platform !== 'darwin') {
+            app.quit();
+        }
+    });
+});
 
 const main = () => {
     const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
@@ -31,68 +105,73 @@ const main = () => {
 
     const webBundlePath = path.join(__dirname, 'node_modules/homegames-web/web/bundle.js');
 
-    let username;
-
-    if (fs.existsSync(`${baseDir}/.hg_auth`) && fs.existsSync(`${baseDir}/.hg_auth/username`)) {
-        username = fs.readFileSync(`${baseDir}/.hg_auth/username`);
-    }
-
     const args = [];
     if (httpsEnabled) {
         args.push(`--cert-path=${certPath}`);
     }
 
-    if (username) {
-        args.push(`--username=${username}`);
-    }
+    sendUpdate('Using app data path', getAppDataPath());
 
-    fork(`${hgCorePath}/index.js`, args);
-    fork(`${hgWebPath}/index.js`, args);
-};
+    const loggerLocation = require.resolve('electron-log');
 
-// start of stuff
-
-const promptUser = (promptText, hideUserInput) => new Promise((resolve, reject) => {
-
-    let muted = false;
+    const webLocation = require.resolve('homegames-web');
+    const tingEnv = process.env;
     
-    const mutableStdout = new Writable({
-        write: (chunk, encoding, callback) => {
-            if (!muted) {
-                process.stdout.write(chunk, encoding);
-            }
-            callback && callback();
-        }
+    const forkFunc = utilityProcess ? utilityProcess.fork : fork;
+
+    const webProc = forkFunc(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
+    sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
+
+    const coreLocation = require.resolve('homegames-core');
+    const coreProc = forkFunc(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
+    sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
+
+    webProc.on('message', (msg) => {
+        log.info('got stdout from web process');
+        log.info(msg);
+        sendUpdate('Message from web process', msg);
     });
 
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: mutableStdout,
-        terminal: true
+    webProc.on('close', (code) => {
+        log.info('web process closed with code ' + code);
+        sendUpdate('Web process closed', `Exit code: ${code}`);
     });
 
-    rl.question(`${promptText}\n`, function(userInput) {
-        rl.close();
-        resolve(userInput);
+    webProc.on('error', (err) => {
+        log.error('web process error');
+        log.error(err);
+        sendUpdate('Web process error', err);
     });
 
-    muted = hideUserInput;
-
-});
-
-const doLogin = () => new Promise((resolve, reject) => {
-    promptUser('Homegames username: ', false).then(username=> {
-        promptUser('Password: ', true).then(password => {
-            login(username, password).then(tokens => {
-                fs.writeFileSync(`${baseDir}/.hg_auth/username`, username);
-                resolve({ username, token: tokens.accessToken });
-            }).catch(err => {
-                console.error(err);
-                reject(err);
-            });
-        });
+    webProc.on('exit', (code) => {
+        log.info('web process exited with code ' + code);
+        sendUpdate('Web process exited', `Exit code: ${code}`);
     });
-});
+
+    coreProc.on('message', (msg) => {
+        log.info('got data from core process');
+        log.info(msg);
+        sendUpdate('Message from web process', msg);
+    });
+
+    coreProc.on('close', (code) => {
+        log.info('core process closed with code ' + code);
+        sendUpdate('Core process closed', `Exit code: ${code}`);
+    });
+
+    coreProc.on('exit', (code) => {
+        log.info('core process exited with code ' + code);
+        sendUpdate('Core process exited', `Exit code: ${code}`);
+    });
+
+    coreProc.on('error', (err) => {
+        log.error('core process error');
+        log.error(err);
+        sendUpdate('Core process error', err);
+    });
+
+    sendReady();
+};
 
 const getLocalIP = () => {
     const ifaces = os.networkInterfaces();
@@ -142,16 +221,22 @@ const requestCert = () => new Promise((resolve, reject) => {
         res.on('data', (chunk) => {
             responseData += chunk;
         });
-
+    
         res.on('end', () => {
-            resolve(responseData);
+            log.info('Request cert success');
+            if (res.statusCode > 199 && res.statusCode < 300) {
+                resolve(responseData);
+            } else {
+                reject(responseData);
+            }
         });
     });
 
+    log.info('Request cert start');
     req.write(payload);
     req.end();
 });
-
+//
 const bufToStream = (buf) => {
     return new Readable({
         read() {
@@ -160,7 +245,7 @@ const bufToStream = (buf) => {
         }
     });
 };
-
+//
 const getCertStatus = () => new Promise((resolve, reject) => {
     const payload = JSON.stringify({
         localServerIp: getLocalIP()
@@ -203,8 +288,6 @@ const getCertStatus = () => new Promise((resolve, reject) => {
     req.end();
 });
 
-// end of stuff
-
 const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const certDirExists = fs.existsSync(`${certPath}`);
     const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
@@ -212,21 +295,29 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
 
     if (!localCertExists) {
         if (!localKeyExists) {
-            console.log('No cert found locally. Requesting cert...');
-            requestCertFlow().then(resolve);
+            log.info('No cert found locally. Requesting cert...');
+            sendUpdate('Requesting cert', 'Requesting a TLS certificate from the Homegames API');
+            requestCertFlow().then(resolve).catch(err => {
+                sendUpdate('Failure requesting cert', 'Encountered a failure when requesting cert: ' + err);
+                log.error('Failure getting cert');
+                log.error(err);
+            });
         } else {
-            console.log('I have a key but do not have a cert. Fetching cert...');
+            log.info('I have a key but do not have a cert. Fetching cert...');
+            sendUpdate('I have a key but do not have a cert.', 'Fetching certificate');
             getCertStatus().then(_certStatus => {
-                console.log("CERT STATUS!");
-                console.log(_certStatus);
+                log.info("CERT STATUS! " + _certStatus);
+                sendUpdate('Checking cert status', _certStatus); 
                 const certStatus = _certStatus && JSON.parse(_certStatus);
                 if (!certStatus || !certStatus.certFound) {
+                    sendUpdate('Error', 'Please contact support@homegames.io');
                     console.error('No cert found for this account & device. Please contact support@homegames.io');
                 } else {
                     if (certStatus.certData) {
                         const certDataBuf = Buffer.from(certStatus.certData, 'base64');
                         fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
-                        console.log('fixed it!');
+                        log.info('fixed it!');
+                        sendUpdate('Got cert data', 'Downloaded cert');
                         resolve();
                     }
                 }
@@ -234,19 +325,22 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
             //});
         }
     } else {
-        console.log('need to confirm the cert is not expired');
+        log.info('need to confirm the cert is not expired');
+        sendUpdate('Confirming cert status', 'Confirming valid local cert');
         const certString = fs.readFileSync(`${certPath}/homegames.cert`);
         const { validTo } = new X509Certificate(certString);
         const expireTime = new Date(validTo).getTime();
         if (expireTime <= Date.now()) {
+            sendUpdate('Cert expired', 'Getting new cert');
             requestCertFlow().then(resolve);
         } else {
-            console.log('i know i have a valid cert');
+            log.info('i know i have a valid cert');
+            sendUpdate('certConfirmed', 'Confirmed valid local certificate');
             resolve();
         }
     }
 });
-
+//
 const requestCertFlow = () => new Promise((resolve, reject) => {
 //    doLogin().then(({username, token}) => {
         requestCert().then(keyBundle => {
@@ -259,23 +353,28 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                 // hack because i have no idea why the directory is nested
                 fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
 
-                console.log('Downloaded key. Waiting for cert...');
+                log.info('Downloaded key. Waiting for cert...');
+                sendUpdate('Key created', 'Waiting for certificate from Homegames API');
 
                 const timeoutTime = Date.now() + (60 * 3 * 1000);
                 let timeWaited = 0;
                 const checker = setInterval(() => {
-                    console.log('Checking...');
+                    log.info('Checking...');
+                    sendUpdate('Checking cert status', 'Fetching current status from Homegames API');
                     if (Date.now() >= timeoutTime) {
-                        console.error('Timed out waiting for cert');
+                        log.error('Timed out waiting for cert');
+                        sendUpdate('Error', 'Timed out waiting for certificate. Try again later or contact support@homegames.io for help');
                         clearInterval(checker);
                     } else {
                         getCertStatus().then((_currentStatus) => {
-                            console.log('Got cert status');
+                            log.info('Got cert status');
+                            sendUpdate('Fetched cert status', 'Successfully fetched cert data');
                             const currentStatus = JSON.parse(_currentStatus);
                             let success = false;
                             if (currentStatus) {
                                 if (currentStatus.certData) {
-                                    console.log('Cert valid!');
+                                    log.info('Cert valid!');
+                                    sendUpdate('Valid cert', 'Got valid cert from Homegames API');
                                     clearInterval(checker);
                                     const certBuf = Buffer.from(currentStatus.certData, 'base64');
                                     fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
@@ -284,27 +383,38 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                                 }
                             }
                             if (!success) {
-                                console.log('No cert status yet. Waiting...');
+                                log.info('No cert status yet. Waiting...');
+                                sendUpdate('Cert not ready yet', 'Waiting...');
                             }
                         });
                     }
 
                 }, 20 * 1000);
             });
+        }).catch(err => {
+            log.error('Failed requesting cert');
+            log.error(err);
+            reject(err);
         });
  
 //    });
 });
 
-if (httpsEnabled) {
-//    if (fs.existsSync(`${baseDir}/.hg_auth/username`)) {
-//        const storedUsername = fs.readFileSync(`${baseDir}/.hg_auth/username`);
-//        console.log('stored username: ' + storedUsername);
+
+const homegamesMain = () => {
+    if (httpsEnabled) {
         verifyOrRequestCert().then(main);
-//    } else {
-//        requestCertFlow().then(main);
-//    }
-} else {
-    main();
+    } else {
+        main();
+    }
 }
+
+if (app) {
+    electronStart().then(() => {
+        homegamesMain();
+    });
+} else {
+    homegamesMain();
+}
+
 
