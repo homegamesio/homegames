@@ -61,7 +61,7 @@ const sendReady = () => {
 
 const certPath = path.join(getAppDataPath(), '.hg-certs');
 
-const electronStart = () => {
+const electronStart = () => new Promise((resolve, reject) => {
     if (!app) {
         return;
     }
@@ -88,6 +88,8 @@ const electronStart = () => {
                 createWindow();
             }
         });        
+
+        resolve();
     });
     
     app.on('window-all-closed', () => {
@@ -95,7 +97,7 @@ const electronStart = () => {
             app.quit();
         }
     });
-};
+});
 
 const main = () => {
     const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
@@ -408,8 +410,9 @@ const homegamesMain = () => {
 }
 
 if (app) {
-    electronStart();
-    homegamesMain();
+    electronStart().then(() => {
+        homegamesMain();
+    });
 } else {
     homegamesMain();
 }
