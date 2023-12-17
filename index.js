@@ -394,6 +394,7 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
         }).catch(err => {
             log.error('Failed requesting cert');
             log.error(err);
+            sendUpdate('Error requesting cert', err);
             reject(err);
         });
  
