@@ -7,9 +7,8 @@
   "dependencies": {
     "electron-log": "^4.4.8",
     "homegames-common": "1.0.7",
-    "homegames-core": "1.0.25",
-    "homegames-web": "0.9.429",
-    "unzipper": "^0.10.11"
+    "homegames-core": "1.0.26",
+    "homegames-web": "0.9.431"
   },
   "devDependencies": {
     "electron": "^25.4.0",
