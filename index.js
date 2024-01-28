@@ -335,7 +335,7 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
             requestCertFlow().then(resolve);
         } else {
             log.info('i know i have a valid cert');
-            sendUpdate('certConfirmed', 'Confirmed valid local certificate');
+            sendUpdate('certConfirmed', 'Confirmed valid local certificate at ' + certPath);
             resolve();
         }
     }
