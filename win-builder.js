@@ -33,7 +33,7 @@ setInterval(() => {
                                 s3.copyObject({
                                     CopySource: `${process.env.BUILD_BUCKET}/${currentCommit}/homegames-setup-x64.exe`,
                                     Bucket: process.env.BUILD_BUCKET,
-                                    Key: `stable/${currentCommit}/homegames-setup-x64.dmg`
+                                    Key: `stable/homegames-setup-x64.exe`
                                 }, (e1, e2) => {
                                     console.log('alright');             
                                 });

@@ -84,22 +84,22 @@ exec('git pull', [], (err1, stdout1, stderr1) => {
                                                                             s3.copyObject({
                                                                                 CopySource: `${process.env.BUILD_BUCKET}/${currentCommit}/homegames-arm64.dmg`,
                                                                                 Bucket: process.env.BUILD_BUCKET,
-                                                                                Key: `stable/${currentCommit}/homegames-arm64.dmg`
+                                                                                Key: `stable/homegames-arm64.dmg`
                                                                             }, (e1, e2) => {
                                                                                 s3.copyObject({
                                                                                     CopySource: `${process.env.BUILD_BUCKET}/${currentCommit}/homegames-x64.dmg`,
                                                                                     Bucket: process.env.BUILD_BUCKET,
-                                                                                    Key: `stable/${currentCommit}/homegames-x64.dmg` 
+                                                                                    Key: `stable/homegames-x64.dmg` 
                                                                                 }, (e3, e4) => {
                                                                                     s3.copyObject({
                                                                                         CopySource: `${process.env.BUILD_BUCKET}/${currentCommit}/homegames-x64.snap`,
                                                                                         Bucket: process.env.BUILD_BUCKET,
-                                                                                        Key: `stable/${currentCommit}/homegames-x64.snap` 
+                                                                                        Key: `stable/homegames-x64.snap` 
                                                                                     }, (e5, e6) => {
                                                                                         s3.copyObject({
                                                                                             CopySource: `${process.env.BUILD_BUCKET}/${currentCommit}/homegames-x64.AppImage`,
                                                                                             Bucket: process.env.BUILD_BUCKET,
-                                                                                            Key: `stable/${currentCommit}/homegames-x64.AppImage` 
+                                                                                            Key: `stable/homegames-x64.AppImage` 
                                                                                         }, (e7, e8) => {
                                                                                             console.log('done!');
                                                                                         });
