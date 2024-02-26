@@ -26,9 +26,21 @@ exec('git pull', [], (err1, stdout1, stderr1) => {
                     });
                 } else {
                     console.warn(`Not building: commit mismatch ${payload.commit} and ${currentCommit}`);
+
                 }
                 console.log('compare ' + currentCommit);
                 console.log(payload);
+                const deleteParams = {
+                    QueueUrl: params.QueueUrl,
+                    ReceiptHandle: data.Messages[0].ReceiptHandle,
+                };
+
+                sqs.deleteMessage(deleteParams, (err, data) => {
+                    console.log(err);
+                    console.log(data);
+                    console.log("deleted");
+                });
+ 
 //                    console.log("built!");
 //                });
             }
