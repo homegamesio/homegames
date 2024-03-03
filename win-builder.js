@@ -54,6 +54,26 @@ setInterval(() => {
                         console.log(err);
                         console.log(data);
                         console.log("deleted");
+                        if (process.env.CLOUDFRONT_DISTRIBUTION_ID) {
+                            const cloudfront = new aws.CloudFront();
+                            const params = {
+                                DistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID,
+                                InvalidationBatch: {
+                                    CallerReference: 'ayylmao',
+                                    Paths: {
+                                        Quantity: 1,
+                                        Items: [
+                                            '/*' 
+                                        ]
+                                    }
+                                }
+                            }
+                            cloudfront.createInvalidation(params, (err, data) => {
+                                console.log('fififnfinfi');
+                                console.log(err);
+                                console.log(data);
+                            });
+                        }
                     });
      
     //                    console.log("built!");

@@ -14,15 +14,30 @@ exec('git pull', [], (err1, stdout1, stderr1) => {
                     console.log('built macos x64');
                     exec(`electron-builder --linux --x64`, [], (_err3, _stdout3, _stderr3) => {
                         console.log('built linux x64');
-                        exec('xcrun notarytool submit dist/homegames-1.0.0.dmg --apple-id ${process.env.APPLE_DEVELOPER_ID} --team-id ${process.env.APPLE_TEAM_ID}--password ${process.env.APPLE_PASSWORD} --wait', [], (_err4, _stdout4, _stderr4) => {
+                        exec(`xcrun notarytool submit dist/homegames-1.0.0.dmg --apple-id ${process.env.APPLE_DEVELOPER_ID} --team-id ${process.env.APPLE_TEAM_ID} --password ${process.env.APPLE_PASSWORD} --wait`, [], (_err4, _stdout4, _stderr4) => {
                             console.log('notarized x64');
+                                    console.log(_err4);
+                                    console.log(_stdout4);
+                                    console.log(_stderr4);
+ 
                             if (!err3) {
-                                exec('xcrun notarytool submit dist/homegames-1.0.0-arm64.dmg --apple-id ${process.env.APPLE_DEVELOPER_ID} --team-id ${process.env.APPLE_TEAM_ID} --password ${process.env.APPLE_PASSWORD}', [], (err4, stdout4, stderr4) => {
+                                exec(`xcrun notarytool submit dist/homegames-1.0.0-arm64.dmg --apple-id ${process.env.APPLE_DEVELOPER_ID} --team-id ${process.env.APPLE_TEAM_ID} --password ${process.env.APPLE_PASSWORD} --wait`, [], (err4, stdout4, stderr4) => {
                                     console.log('notarized arm');
+                                    console.log(err4);
+                                    console.log(stdout4);
+                                    console.log(stderr4);
                                     exec('xcrun stapler staple dist/homegames-1.0.0-arm64.dmg ', [], (err5, stdout5, stderr5) => {
                                         console.log('stapled arm');
-                                        exec('xcrun stapler staple dist/homegames-1.0.0.dmg ', [], (err5, stdout5, stderr5) => {
+                                    console.log(err5);
+                                    console.log(stdout5);
+                                    console.log(stderr5);
+ 
+                                        exec('xcrun stapler staple dist/homegames-1.0.0.dmg ', [], (_err5, _stdout5, _stderr5) => {
                                             console.log('stapled x64. need to upload to s3 and send out sqs message for windows build');
+                                        console.log(_err5);
+                                        console.log(_stdout5);
+                                        console.log(_stderr5);
+ 
                                             const s3 = new aws.S3();
                                             const armDmg = fs.readFileSync('dist/homegames-1.0.0-arm64.dmg');
                                             const x64Dmg = fs.readFileSync('dist/homegames-1.0.0.dmg');
