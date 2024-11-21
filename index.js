@@ -22,6 +22,7 @@ const API_HOST = new URL(API_URL).host;
 
 process.env.LINK_ENABLED = linkEnabled;
 process.env.HTTPS_ENABLED = httpsEnabled;
+process.env.LOGGER_LOCATION = require.resolve('./logger');
 
 let baseDir = path.dirname(require.main.filename);
 

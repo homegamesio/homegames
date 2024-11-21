@@ -25,7 +25,7 @@ const log = {
             const module = API_URL.startsWith('https') ? https : http;
             const payload = JSON.stringify({ message: msg });
 
-            hostname = new URL(API_URL).host;
+            const hostname = new URL(API_URL).host;
 
             const headers = {};
 
