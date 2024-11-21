@@ -11,5 +11,9 @@
     "BEZEL_SIZE_X": 15,
     "PUBLIC_GAMES": true,
     "DOWNLOADED_GAME_DIRECTORY": "hg-games",
-    "LOG_PATH": "hg_log.txt"
+    "LOG_PATH": "hg_log.txt",
+    "API_URL": "https://api.homegames.io",
+    "CERT_DOMAIN": "homegames.link",
+    "LINK_URL": "wss://homegames.link",
+    "LINK_PROXY_URL": "wss://public.homegames.link:81"
 }

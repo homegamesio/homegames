@@ -9,7 +9,7 @@ const process = require('process');
 const fs = require('fs');
 const os = require('os');
 const readline = require('readline');
-const log = require('electron-log');
+const log = require('./logger');
 const { getConfigValue, login, getAppDataPath } = require('homegames-common');
 const { app, utilityProcess, BrowserWindow } = require('electron');
 
@@ -17,10 +17,8 @@ const linkEnabled = getConfigValue('LINK_ENABLED', false);
 const httpsEnabled = getConfigValue('HTTPS_ENABLED', false);
 
 const API_URL = getConfigValue('API_URL', 'https://api.homegames.io:443');
-const CERT_URL = getConfigValue('CERT_URL', 'https://certs.homegames.link:443');
 
 const API_HOST = new URL(API_URL).host;
-const CERT_HOST = new URL(CERT_URL).host;
 
 process.env.LINK_ENABLED = linkEnabled;
 process.env.HTTPS_ENABLED = httpsEnabled;
@@ -119,7 +117,7 @@ const main = () => {
 
     sendUpdate('Using app data path', getAppDataPath());
 
-    const loggerLocation = require.resolve('electron-log');
+    const loggerLocation = require.resolve('./logger.js');
 
     const webLocation = require.resolve('homegames-web');
     const tingEnv = process.env;
@@ -131,6 +129,7 @@ const main = () => {
 
     const coreLocation = require.resolve('homegames-core');
     const coreProc = forkFunc(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
+    log.info("THIS IS LOGGER");
     sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
 
     webProc.on('message', (msg) => {
@@ -202,12 +201,15 @@ const requestCert = () => new Promise((resolve, reject) => {
     });
 
     const port = 443;
-    const hostname = CERT_HOST;
+    const hostname = API_HOST;
     const path = '/request-cert'
     const headers = {
 //        'hg-username': username,
 //        'hg-token': token
     };
+
+    log.info("WAT");
+    log.info(hostname);
 
     Object.assign(headers, {
         'Content-Type': 'application/json',
@@ -297,15 +299,14 @@ const getCertStatus = () => new Promise((resolve, reject) => {
 
 const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const certDirExists = fs.existsSync(`${certPath}`);
-    console.log('what is certpaht');
-    console.log(certPath);
+    log.info('what is certpath ' + certpath);
     const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
     const localKeyExists = certDirExists && fs.existsSync(`${certPath}/homegames.key`);
 
     if (!localCertExists) {
         if (!localKeyExists) {
             log.info('No cert found locally. Requesting cert...');
-            sendUpdate('Requesting cert', 'Requesting a TLS certificate from the Homegames API');
+            sendUpdate('Requesting cert', 'Requesting a certificate from the Homegames API');
             requestCertFlow().then(resolve).catch(err => {
                 sendUpdate('Failure requesting cert', 'Encountered a failure when requesting cert: ' + err);
                 log.error('Failure getting cert');
@@ -412,7 +413,6 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
 
 const homegamesMain = () => {
     if (httpsEnabled) {
-        console.log("SDFSDFDSFDSFDS HJFJFJFJF");
         verifyOrRequestCert().then(main);
     } else {
         main();
