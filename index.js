@@ -299,7 +299,7 @@ const getCertStatus = () => new Promise((resolve, reject) => {
 
 const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const certDirExists = fs.existsSync(`${certPath}`);
-    log.info('what is certpath ' + certpath);
+    log.info('what is certpath ' + certPath);
     const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
     const localKeyExists = certDirExists && fs.existsSync(`${certPath}/homegames.key`);
 
