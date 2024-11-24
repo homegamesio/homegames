@@ -1,4 +1,5 @@
 const { spawn, fork } = require('child_process');
+const http = require('http');
 const https = require('https');
 const { Readable, Writable } = require('stream');
 const unzipper = require('unzipper');
@@ -8,15 +9,20 @@ const process = require('process');
 const fs = require('fs');
 const os = require('os');
 const readline = require('readline');
-const log = require('electron-log');
+const log = require('./logger');
 const { getConfigValue, login, getAppDataPath } = require('homegames-common');
 const { app, utilityProcess, BrowserWindow } = require('electron');
 
 const linkEnabled = getConfigValue('LINK_ENABLED', false);
 const httpsEnabled = getConfigValue('HTTPS_ENABLED', false);
 
+const API_URL = getConfigValue('API_URL', 'https://api.homegames.io:443');
+
+const API_HOST = new URL(API_URL).host;
+
 process.env.LINK_ENABLED = linkEnabled;
 process.env.HTTPS_ENABLED = httpsEnabled;
+process.env.LOGGER_LOCATION = require.resolve('./logger');
 
 let baseDir = path.dirname(require.main.filename);
 
@@ -59,7 +65,7 @@ const sendReady = () => {
     mainWindow && mainWindow.webContents.send('ready', '');
 };
 
-const certPath = path.join(getAppDataPath(), '.hg-certs');
+const certPath = path.join(getAppDataPath(), 'hg-certs');
 
 const electronStart = () => new Promise((resolve, reject) => {
     if (!app) {
@@ -112,7 +118,7 @@ const main = () => {
 
     sendUpdate('Using app data path', getAppDataPath());
 
-    const loggerLocation = require.resolve('electron-log');
+    const loggerLocation = require.resolve('./logger.js');
 
     const webLocation = require.resolve('homegames-web');
     const tingEnv = process.env;
@@ -124,6 +130,7 @@ const main = () => {
 
     const coreLocation = require.resolve('homegames-core');
     const coreProc = forkFunc(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
+    log.info("THIS IS LOGGER");
     sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
 
     webProc.on('message', (msg) => {
@@ -195,12 +202,15 @@ const requestCert = () => new Promise((resolve, reject) => {
     });
 
     const port = 443;
-    const hostname = 'certs.homegames.link';
+    const hostname = API_HOST;
     const path = '/request-cert'
     const headers = {
 //        'hg-username': username,
 //        'hg-token': token
     };
+
+    log.info("WAT");
+    log.info(hostname);
 
     Object.assign(headers, {
         'Content-Type': 'application/json',
@@ -252,8 +262,8 @@ const getCertStatus = () => new Promise((resolve, reject) => {
     });
 
     const port = 443;
-    const hostname = 'certs.homegames.link';
-    const path = '/cert_status'
+    const hostname = API_HOST;
+    const path = '/cert-status'
     const headers = {
 //        'hg-username': username,
 //        'hg-token': token
@@ -268,7 +278,7 @@ const getCertStatus = () => new Promise((resolve, reject) => {
         hostname,
         path,
         port,
-        method: 'POST',
+        method: 'GET',
         headers
     };
 
@@ -290,13 +300,14 @@ const getCertStatus = () => new Promise((resolve, reject) => {
 
 const verifyOrRequestCert = () => new Promise((resolve, reject) => {
     const certDirExists = fs.existsSync(`${certPath}`);
+    log.info('what is certpath ' + certPath);
     const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
     const localKeyExists = certDirExists && fs.existsSync(`${certPath}/homegames.key`);
 
     if (!localCertExists) {
         if (!localKeyExists) {
             log.info('No cert found locally. Requesting cert...');
-            sendUpdate('Requesting cert', 'Requesting a TLS certificate from the Homegames API');
+            sendUpdate('Requesting cert', 'Requesting a certificate from the Homegames API');
             requestCertFlow().then(resolve).catch(err => {
                 sendUpdate('Failure requesting cert', 'Encountered a failure when requesting cert: ' + err);
                 log.error('Failure getting cert');
@@ -313,8 +324,8 @@ const verifyOrRequestCert = () => new Promise((resolve, reject) => {
                     sendUpdate('Error', 'Please contact support@homegames.io');
                     console.error('No cert found for this account & device. Please contact support@homegames.io');
                 } else {
-                    if (certStatus.certData) {
-                        const certDataBuf = Buffer.from(certStatus.certData, 'base64');
+                    if (certStatus.cert) {
+                        const certDataBuf = Buffer.from(certStatus.cert, 'base64');
                         fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
                         log.info('fixed it!');
                         sendUpdate('Got cert data', 'Downloaded cert');
@@ -350,13 +361,12 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
             keyStream.pipe(unzip);
 
             unzip.on('close', () => {
-                // hack because i have no idea why the directory is nested
-                fs.copyFileSync(`${certPath}/hg-certs/homegames.key`, `${certPath}/homegames.key`);
+                fs.copyFileSync(`${certPath}/homegames.key`, `${certPath}/homegames.key`);
 
                 log.info('Downloaded key. Waiting for cert...');
                 sendUpdate('Key created', 'Waiting for certificate from Homegames API');
 
-                const timeoutTime = Date.now() + (60 * 3 * 1000);
+                const timeoutTime = Date.now() + (60 * 5 * 1000); // 5 mins
                 let timeWaited = 0;
                 const checker = setInterval(() => {
                     log.info('Checking...');
@@ -372,11 +382,11 @@ const requestCertFlow = () => new Promise((resolve, reject) => {
                             const currentStatus = JSON.parse(_currentStatus);
                             let success = false;
                             if (currentStatus) {
-                                if (currentStatus.certData) {
+                                if (currentStatus.cert) {
                                     log.info('Cert valid!');
                                     sendUpdate('Valid cert', 'Got valid cert from Homegames API');
                                     clearInterval(checker);
-                                    const certBuf = Buffer.from(currentStatus.certData, 'base64');
+                                    const certBuf = Buffer.from(currentStatus.cert, 'base64');
                                     fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
                                     success = true;
                                     resolve();
