@@ -7,8 +7,8 @@
   "dependencies": {
     "electron-log": "^4.4.8",
     "homegames-common": "1.1.1",
-    "homegames-core": "1.0.33",
-    "homegames-web": "1.1.2"
+    "homegames-core": "1.1.1",
+    "homegames-web": "1.2.0"
   },
   "devDependencies": {
     "electron": "^25.4.0",
