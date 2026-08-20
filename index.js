@@ -1,431 +1,155 @@
-const { spawn, fork } = require('child_process');
+/**
+ * Homegames supervisor.
+ *
+ * The whole launcher, post-Electron: start homegames-core, honor its restart
+ * contract, and open a browser at the right place. Deliberately dependency-
+ * free (plain Node, no npm packages) so it runs identically as a desktop
+ * install and straight off read-only media (CD/USB bundles) next to a bundled
+ * Node runtime.
+ *
+ * Restart contract (see homegames-core game_server.js requestRestart):
+ *   exit 75 — restart core (apply config changes)
+ *   exit 76 — restart core, then open https://homegames.link
+ * Any other exit code is final.
+ */
+
+const { fork } = require('child_process');
+const { exec } = require('child_process');
+const fs = require('fs');
 const http = require('http');
-const https = require('https');
-const { Readable, Writable } = require('stream');
-const unzipper = require('unzipper');
-const { X509Certificate } = require('crypto');
+const os = require('os');
 const path = require('path');
 const process = require('process');
-const fs = require('fs');
-const os = require('os');
-const readline = require('readline');
-const log = require('./logger');
-const { getConfigValue, login, getAppDataPath } = require('homegames-common');
-const { app, utilityProcess, BrowserWindow } = require('electron');
 
-const linkEnabled = getConfigValue('LINK_ENABLED', false);
-const httpsEnabled = getConfigValue('HTTPS_ENABLED', false);
+const EXIT_RESTART = 75;
+const EXIT_RESTART_OPEN_LINK = 76;
 
-const API_URL = getConfigValue('API_URL', 'https://api.homegames.io:443');
+const log = (msg) => console.log(`[homegames] ${msg}`);
 
-const API_HOST = new URL(API_URL).host;
+// --- Locate homegames-core ---------------------------------------------------
+// Desktop installs resolve it as a dependency; bundles ship it as a sibling
+// directory of this file.
+const resolveCore = () => {
+    try {
+        return require.resolve('homegames-core');
+    } catch (e) {}
 
-process.env.LINK_ENABLED = linkEnabled;
-process.env.HTTPS_ENABLED = httpsEnabled;
-process.env.LOGGER_LOCATION = require.resolve('./logger');
+    const sibling = path.join(__dirname, '..', 'homegames-core', 'index.js');
+    if (fs.existsSync(sibling)) return sibling;
 
-let baseDir = path.dirname(require.main.filename);
+    throw new Error('Could not find homegames-core (neither as a dependency nor as a sibling directory)');
+};
 
-if (baseDir.endsWith('src')) {
-    baseDir = baseDir.substring(0, baseDir.length - 3);
-}
-
-let checkboxes = [
-    {
-        text: 'Local key',
-        done: false
-    },
-    {
-        text: 'Local certificate',
-        done: false
+// --- Config (read-only, mirrors homegames-common's overlay semantics) --------
+// env > <appData>/config.json overrides > core's config.json base.
+const getAppDataPath = () => {
+    switch (process.platform) {
+        case 'darwin': return path.join(os.homedir(), 'Library', 'Application Support', 'homegames');
+        case 'win32': return process.env.APPDATA ? path.join(process.env.APPDATA, 'homegames') : os.homedir();
+        default: return path.join(os.homedir(), '.homegames');
     }
-];
-
-let mainWindow;
-
-let sendUpdateHelper = (payload) => { 
-    mainWindow && mainWindow.webContents.send('update', payload);
 };
 
-let sendUpdate = (newStatus, description) => {
-    sendUpdateHelper({
-        checkboxes,
-        newStatus, 
-        description
+const readJson = (file) => {
+    try {
+        return JSON.parse(fs.readFileSync(file));
+    } catch (e) {
+        return {};
+    }
+};
+
+const getConfigValue = (coreDir, key, fallback) => {
+    if (process.env[key] !== undefined) return process.env[key];
+    const merged = Object.assign(
+        {},
+        readJson(path.join(coreDir, 'config.json')),
+        readJson(path.join(getAppDataPath(), 'config.json'))
+    );
+    return merged[key] !== undefined ? merged[key] : fallback;
+};
+
+// --- Browser ------------------------------------------------------------------
+const openExternal = (url) => {
+    const opener = process.platform === 'darwin' ? `open "${url}"`
+        : process.platform === 'win32' ? `start "" "${url}"`
+        : `xdg-open "${url}"`;
+    exec(opener, (err) => {
+        if (err) log(`Could not open a browser automatically — visit ${url}`);
     });
 };
 
-const sendReady = () => {
-    sendUpdateHelper({
-        checkboxes,
-        newStatus: 'Ready',
-        description: 'Homegames is ready'
-    });
-
-    mainWindow && mainWindow.webContents.send('ready', '');
-};
-
-const certPath = path.join(getAppDataPath(), 'hg-certs');
-
-const electronStart = () => new Promise((resolve, reject) => {
-    if (!app) {
+// Wait until the server responds, then open the browser (unless suppressed).
+const openWhenReady = (url, probeUrl, attempts = 60) => {
+    if (process.env.HG_NO_OPEN === 'true' || process.argv.includes('--no-open')) {
+        log(`Ready check skipped browser open — play at ${url}`);
         return;
     }
-
-    const createWindow = () => {
-        mainWindow = new BrowserWindow({
-            width: 800,
-            height: 600,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js')
-            }
+    const probe = (remaining) => {
+        const req = http.get(probeUrl, (res) => {
+            res.resume();
+            log(`Homegames is ready — opening ${url}`);
+            openExternal(url);
         });
-
-        mainWindow.loadFile('electron.html');
+        req.on('error', () => {
+            if (remaining > 0) setTimeout(() => probe(remaining - 1), 1000);
+            else log(`Server never became ready — try visiting ${url} manually`);
+        });
+        req.setTimeout(2000, () => req.destroy(new Error('probe timeout')));
     };
+    probe(attempts);
+};
 
-    app.setAppLogsPath();
-
-    app.whenReady().then(() => {
-        createWindow();
-    
-        app.on('activate', () => {
-            if (BrowserWindow.getAllWindows().length === 0) {
-                createWindow();
-            }
-        });        
-
-        resolve();
-    });
-    
-    app.on('window-all-closed', () => {
-        if (process.platform !== 'darwin') {
-            app.quit();
-        }
-    });
-});
-
+// --- Supervise ------------------------------------------------------------------
 const main = () => {
-    const hgCorePath = path.join(__dirname, 'node_modules/homegames-core');
-    const hgWebPath = path.join(__dirname, 'node_modules/homegames-web');
+    const coreLocation = resolveCore();
+    const coreDir = path.dirname(coreLocation);
+    const port = getConfigValue(coreDir, 'HOME_PORT', 7001);
+    const localUrl = `http://localhost:${port}`;
 
-    const webBundlePath = path.join(__dirname, 'node_modules/homegames-web/web/bundle.js');
+    log(`Using homegames-core at ${coreLocation}`);
 
-    const args = [];
-    if (httpsEnabled) {
-        args.push(`--cert-path=${certPath}`);
-    }
+    let child = null;
+    let shuttingDown = false;
 
-    sendUpdate('Using app data path', getAppDataPath());
+    const startCore = ({ openLinkAfter = false } = {}) => {
+        child = fork(coreLocation, [], { cwd: coreDir });
+        log(`Started homegames-core (pid ${child.pid})`);
 
-    const loggerLocation = require.resolve('./logger.js');
+        if (openLinkAfter) {
+            // The link page auto-refreshes while the instance provisions, so
+            // opening as soon as we're serving again is fine.
+            openWhenReady('https://homegames.link', localUrl);
+        }
 
-    const webLocation = require.resolve('homegames-web');
-    const tingEnv = process.env;
-    
-    const forkFunc = utilityProcess ? utilityProcess.fork : fork;
-
-    const webProc = forkFunc(webLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
-    sendUpdate('Starting homegames web', `Starting homegames-web process at ${webLocation}`);
-
-    const coreLocation = require.resolve('homegames-core');
-    const coreProc = forkFunc(coreLocation, args, { env: { LOGGER_LOCATION: loggerLocation, ...tingEnv }});
-    log.info("THIS IS LOGGER");
-    sendUpdate('Starting homegames core', `Starting homegames-core process at ${coreLocation}`);
-
-    webProc.on('message', (msg) => {
-        log.info('got stdout from web process');
-        log.info(msg);
-        sendUpdate('Message from web process', msg);
-    });
-
-    webProc.on('close', (code) => {
-        log.info('web process closed with code ' + code);
-        sendUpdate('Web process closed', `Exit code: ${code}`);
-    });
-
-    webProc.on('error', (err) => {
-        log.error('web process error');
-        log.error(err);
-        sendUpdate('Web process error', err);
-    });
-
-    webProc.on('exit', (code) => {
-        log.info('web process exited with code ' + code);
-        sendUpdate('Web process exited', `Exit code: ${code}`);
-    });
-
-    coreProc.on('message', (msg) => {
-        log.info('got data from core process');
-        log.info(msg);
-        sendUpdate('Message from web process', msg);
-    });
-
-    coreProc.on('close', (code) => {
-        log.info('core process closed with code ' + code);
-        sendUpdate('Core process closed', `Exit code: ${code}`);
-    });
-
-    coreProc.on('exit', (code) => {
-        log.info('core process exited with code ' + code);
-        sendUpdate('Core process exited', `Exit code: ${code}`);
-    });
-
-    coreProc.on('error', (err) => {
-        log.error('core process error');
-        log.error(err);
-        sendUpdate('Core process error', err);
-    });
-
-    sendReady();
-};
-
-const getLocalIP = () => {
-    const ifaces = os.networkInterfaces();
-    let localIP;
-
-    Object.keys(ifaces).forEach((ifname) => {
-        ifaces[ifname].forEach((iface) => {
-            if ('IPv4' !== iface.family || iface.internal) {
-                return;
-            }
-            localIP = localIP || iface.address;
-        });
-    });
-
-    return localIP;
-};
-
-const requestCert = () => new Promise((resolve, reject) => {
-    const payload = JSON.stringify({
-        localServerIp: getLocalIP()
-    });
-
-    const port = 443;
-    const hostname = API_HOST;
-    const path = '/request-cert'
-    const headers = {
-//        'hg-username': username,
-//        'hg-token': token
-    };
-
-    log.info("WAT");
-    log.info(hostname);
-
-    Object.assign(headers, {
-        'Content-Type': 'application/json',
-        'Content-Length': payload.length
-    });
-
-    const options = {
-        hostname,
-        path,
-        port,
-        method: 'POST',
-        headers
-    };
-
-    let responseData = '';
-
-    const req = https.request(options, (res) => {
-        res.on('data', (chunk) => {
-            responseData += chunk;
-        });
-    
-        res.on('end', () => {
-            log.info('Request cert success');
-            if (res.statusCode > 199 && res.statusCode < 300) {
-                resolve(responseData);
+        child.on('exit', (code) => {
+            if (shuttingDown) return;
+            if (code === EXIT_RESTART || code === EXIT_RESTART_OPEN_LINK) {
+                log('Core requested a restart to apply changes');
+                startCore({ openLinkAfter: code === EXIT_RESTART_OPEN_LINK });
             } else {
-                reject(responseData);
+                log(`Core exited with code ${code}`);
+                process.exit(code || 0);
             }
         });
-    });
 
-    log.info('Request cert start');
-    req.write(payload);
-    req.end();
-});
-//
-const bufToStream = (buf) => {
-    return new Readable({
-        read() {
-            this.push(buf);
-            this.push(null);
+        child.on('error', (err) => {
+            console.error('[homegames] core process error');
+            console.error(err);
+        });
+    };
+
+    const shutdown = () => {
+        shuttingDown = true;
+        if (child) {
+            try { child.kill(); } catch (e) {}
         }
-    });
+        process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+
+    startCore();
+    openWhenReady(localUrl, localUrl);
 };
-//
-const getCertStatus = () => new Promise((resolve, reject) => {
-    const payload = JSON.stringify({
-        localServerIp: getLocalIP()
-    });
 
-    const port = 443;
-    const hostname = API_HOST;
-    const path = '/cert-status'
-    const headers = {
-//        'hg-username': username,
-//        'hg-token': token
-    };
-
-    Object.assign(headers, {
-        'Content-Type': 'application/json',
-        'Content-Length': payload.length
-    });
-
-    const options = {
-        hostname,
-        path,
-        port,
-        method: 'GET',
-        headers
-    };
-
-    let responseData = '';
-
-    const req = https.request(options, (res) => {
-        res.on('data', (chunk) => {
-            responseData += chunk;
-        });
-
-        res.on('end', () => {
-            resolve(responseData);
-        });
-    });
-
-    req.write(payload);
-    req.end();
-});
-
-const verifyOrRequestCert = () => new Promise((resolve, reject) => {
-    const certDirExists = fs.existsSync(`${certPath}`);
-    log.info('what is certpath ' + certPath);
-    const localCertExists = certDirExists && fs.existsSync(`${certPath}/homegames.cert`);
-    const localKeyExists = certDirExists && fs.existsSync(`${certPath}/homegames.key`);
-
-    if (!localCertExists) {
-        if (!localKeyExists) {
-            log.info('No cert found locally. Requesting cert...');
-            sendUpdate('Requesting cert', 'Requesting a certificate from the Homegames API');
-            requestCertFlow().then(resolve).catch(err => {
-                sendUpdate('Failure requesting cert', 'Encountered a failure when requesting cert: ' + err);
-                log.error('Failure getting cert');
-                log.error(err);
-            });
-        } else {
-            log.info('I have a key but do not have a cert. Fetching cert...');
-            sendUpdate('I have a key but do not have a cert.', 'Fetching certificate');
-            getCertStatus().then(_certStatus => {
-                log.info("CERT STATUS! " + _certStatus);
-                sendUpdate('Checking cert status', _certStatus); 
-                const certStatus = _certStatus && JSON.parse(_certStatus);
-                if (!certStatus || !certStatus.certFound) {
-                    sendUpdate('Error', 'Please contact support@homegames.io');
-                    console.error('No cert found for this account & device. Please contact support@homegames.io');
-                } else {
-                    if (certStatus.cert) {
-                        const certDataBuf = Buffer.from(certStatus.cert, 'base64');
-                        fs.writeFileSync(`${certPath}/homegames.cert`, certDataBuf);
-                        log.info('fixed it!');
-                        sendUpdate('Got cert data', 'Downloaded cert');
-                        resolve();
-                    }
-                }
-            });
-            //});
-        }
-    } else {
-        log.info('need to confirm the cert is not expired');
-        sendUpdate('Confirming cert status', 'Confirming valid local cert');
-        const certString = fs.readFileSync(`${certPath}/homegames.cert`);
-        const { validTo } = new X509Certificate(certString);
-        const expireTime = new Date(validTo).getTime();
-        if (expireTime <= Date.now()) {
-            sendUpdate('Cert expired', 'Getting new cert');
-            requestCertFlow().then(resolve);
-        } else {
-            log.info('i know i have a valid cert');
-            sendUpdate('certConfirmed', 'Confirmed valid local certificate at ' + certPath);
-            resolve();
-        }
-    }
-});
-//
-const requestCertFlow = () => new Promise((resolve, reject) => {
-//    doLogin().then(({username, token}) => {
-        requestCert().then(keyBundle => {
-            const keyBuf = Buffer.from(keyBundle, 'base64');
-            const keyStream = bufToStream(keyBuf);
-            const unzip = unzipper.Extract({ path: certPath });
-            keyStream.pipe(unzip);
-
-            unzip.on('close', () => {
-                fs.copyFileSync(`${certPath}/homegames.key`, `${certPath}/homegames.key`);
-
-                log.info('Downloaded key. Waiting for cert...');
-                sendUpdate('Key created', 'Waiting for certificate from Homegames API');
-
-                const timeoutTime = Date.now() + (60 * 5 * 1000); // 5 mins
-                let timeWaited = 0;
-                const checker = setInterval(() => {
-                    log.info('Checking...');
-                    sendUpdate('Checking cert status', 'Fetching current status from Homegames API');
-                    if (Date.now() >= timeoutTime) {
-                        log.error('Timed out waiting for cert');
-                        sendUpdate('Error', 'Timed out waiting for certificate. Try again later or contact support@homegames.io for help');
-                        clearInterval(checker);
-                    } else {
-                        getCertStatus().then((_currentStatus) => {
-                            log.info('Got cert status');
-                            sendUpdate('Fetched cert status', 'Successfully fetched cert data');
-                            const currentStatus = JSON.parse(_currentStatus);
-                            let success = false;
-                            if (currentStatus) {
-                                if (currentStatus.cert) {
-                                    log.info('Cert valid!');
-                                    sendUpdate('Valid cert', 'Got valid cert from Homegames API');
-                                    clearInterval(checker);
-                                    const certBuf = Buffer.from(currentStatus.cert, 'base64');
-                                    fs.writeFileSync(`${certPath}/homegames.cert`, certBuf);
-                                    success = true;
-                                    resolve();
-                                }
-                            }
-                            if (!success) {
-                                log.info('No cert status yet. Waiting...');
-                                sendUpdate('Cert not ready yet', 'Waiting...');
-                            }
-                        });
-                    }
-
-                }, 20 * 1000);
-            });
-        }).catch(err => {
-            log.error('Failed requesting cert');
-            log.error(err);
-            sendUpdate('Error requesting cert', err);
-            reject(err);
-        });
- 
-//    });
-});
-
-
-const homegamesMain = () => {
-    if (httpsEnabled) {
-        verifyOrRequestCert().then(main);
-    } else {
-        main();
-    }
-}
-
-if (app) {
-    electronStart().then(() => {
-        homegamesMain();
-    });
-} else {
-    homegamesMain();
-}
-
-
+main();
