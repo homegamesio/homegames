@@ -50,15 +50,25 @@ const openExternal = (url) => {
 
 // --- Supervise ------------------------------------------------------------------
 const main = () => {
+    // A saved HTTPS/discovery preference must never prevent an offline launch.
+    // This override is process-local; it does not rewrite the user's settings.
+    if (process.argv.includes('--offline') || process.env.HG_OFFLINE === 'true') {
+        Object.assign(process.env, { HG_OFFLINE: 'true', LINK_ENABLED: 'false', HTTPS_ENABLED: 'false',
+            PUBLIC_GAMES: 'false', ERROR_REPORTING: 'false', RTC_SHARE_ORIGIN: 'local' });
+    }
     const coreLocation = resolveCore();
     const coreDir = path.dirname(coreLocation);
+    // Source installs keep their base config beside this launcher. Bundles
+    // omit that file and ship their defaults in homegames-core instead.
+    const configDir = fs.existsSync(path.join(__dirname, 'config.json')) ? __dirname : coreDir;
     log(`Using homegames-core at ${coreLocation}`);
+    log(`Using base configuration at ${path.join(configDir, 'config.json')}`);
 
     let child = null;
     let shuttingDown = false;
 
     const startCore = ({ openBrowser = false, openLinkAfter = false } = {}) => {
-        const current = child = fork(coreLocation, [], { cwd: coreDir });
+        const current = child = fork(coreLocation, [], { cwd: configDir });
         log(`Started homegames-core (pid ${current.pid})`);
         let ready = false;
         const readyTimer = setTimeout(() => {

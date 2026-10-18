@@ -6,7 +6,7 @@
     "GAME_SERVER_PORT_RANGE_MIN": 8300,
     "GAME_SERVER_PORT_RANGE_MAX": 8400,
     "IS_DEMO": false,
-    "HTTPS_ENABLED": false,
+    "HTTPS_ENABLED": true,
     "BEZEL_SIZE_X": 9,
     "BEZEL_SIZE_Y": 9,
     "HOTLOAD_ENABLED": false,
@@ -24,8 +24,10 @@
     "zSTART_PATH": "/Users/josephgarcia/homegames/homegames-core/src/games/input-test/index.js",
     "zSTART_PATH": "/Users/josephgarcia/homegames/homegames-core/src/games/draw",
     "zSTART_PATH": "/Users/josephgarcia/homegames/homegames-core/src/games/hot-potato",
-    "TESTS_ENABLED": true,
+    "TESTS_ENABLED": false,
     "API_URL": "https://api.homegames.io",
     "LINK_PROXY_URL": "wss://public.homegames.link:81",
-    "LINK_URL": "wss://homegames.link"
+    "LINK_URL": "wss://homegames.link",
+     "START_PATH": null,
+  "START_MODE": "browser"
 }

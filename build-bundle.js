@@ -4,9 +4,8 @@
  *
  * The bundle ships REAL FILES (no binary packing): the full homegames-core
  * source + production node_modules, per-platform Node runtimes, a
- * dependency-free supervisor, the configured game's assets (prefetched for
- * offline play), and double-clickable launch scripts. Everything a curious
- * player opens the disc and reads.
+ * dependency-free supervisor, every built-in game's local media, and
+ * double-clickable launchers. Players can inspect the shipped source files.
  *
  * Usage:
  *   node build-bundle.js --game <GameKeyOrPath> [--out dist/bundle]
@@ -49,8 +48,7 @@ const crypto = require('crypto');
 const { pipeline } = require('stream/promises');
 const { copyProductionTree, packageDirectory, includeFile } = require('./build-support');
 
-const NODE_VERSION = 'v24.19.0';
-const API_URL = 'https://api.homegames.io';
+const NODE_VERSION = 'v24.22.0';
 
 const RUNTIME_TARGETS = {
     'darwin-arm64': { archive: `node-${NODE_VERSION}-darwin-arm64.tar.gz`, binary: 'bin/node', out: 'node' },
@@ -58,13 +56,13 @@ const RUNTIME_TARGETS = {
     'linux-x64': { archive: `node-${NODE_VERSION}-linux-x64.tar.gz`, binary: 'bin/node', out: 'node' },
     'win-x64': { archive: `node-${NODE_VERSION}-win-x64.zip`, binary: 'node.exe', out: 'node.exe' },
 };
-// Official nodejs.org/dist/v24.19.0/SHASUMS256.txt. Pin the bytes as well as
+// Official nodejs.org/en/blog/release/v24.22.0 SHASUMS. Pin the bytes as well as
 // the version, including when reusing a previously downloaded archive.
 const RUNTIME_SHA256 = {
-    'darwin-arm64': '8294b7aa9b03997481c06babf1e8b270c859358f27da57a11509afe537ac381d',
-    'darwin-x64': 'd1b5e999db158c62fe8f7267a4476b035d8bd93b1a605bac24a3f0dd166e3316',
-    'linux-x64': 'f625d97cd707df4ff96254916fbc5ff014f09c09effe5a1e0ca8f6d41a8789d4',
-    'win-x64': '57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73',
+    'darwin-arm64': '6a9724d9b50a5f22b4816cded441b5a8d9ddae546191a5e5b7efa5a5e2ee26d5',
+    'darwin-x64': '495e3f273c645f3c4677d438304cdfc701729ea5dec5728f5c8e76a2dece4b91',
+    'linux-x64': '28ea0a438de9a13bd7891fd758eee6c7819ee8af5442dfd8d45bd65e56d4228c',
+    'win-x64': 'f9683a19877e12a9b167305c8db71040d812876359de21f0d2e97c3f321f80c3',
 };
 
 const CORE_DIR = path.dirname(require.resolve('homegames-core/package.json'));
@@ -124,6 +122,7 @@ const parseArgs = (argv = process.argv.slice(2)) => {
 // --- Copy the core tree (dereferencing the file: symlinks) -------------------
 
 const copyCore = (bundleCoreDir) => {
+    require(path.join(CORE_DIR, 'docker/prepare-context')).assertRunnerSupport(CORE_DIR);
     log(`Copying homegames-core and its installed production dependencies…`);
     copyProductionTree(CORE_DIR, bundleCoreDir);
 };
@@ -156,17 +155,7 @@ const placeGame = (gameArg, bundleCoreDir) => {
     throw new Error(`--game ${gameArg} is neither a directory nor a game under src/games`);
 };
 
-// --- Asset prefetch (offline play) --------------------------------------------
-
-const fetchAsset = (assetId, destFile) => downloadFile(`${API_URL}/assets/${encodeURIComponent(assetId)}`, destFile);
-
-// Assets the dashboard registers in its constructor rather than a static
-// metadata() (which the parser can't see). Keep in sync with
-// HomegamesDashboard.js `this.assets`.
-const DASHBOARD_ASSETS = [
-    { id: 'ff745468e1b725445c65245ce044da21', key: 'default-thumbnail', type: 'image' },
-    { id: 'd9f097268324319d07a903cb50dc7210', key: 'dashboardSong', type: 'audio' },
-];
+// --- Local media validation (offline play) --------------------------------------------
 
 // All asset declarations a bundle needs offline: EVERY built-in game's
 // metadata assets and thumbnail (so the whole library plays offline, not just
@@ -176,89 +165,18 @@ const DASHBOARD_ASSETS = [
 //
 // Every declared asset is required: a successful build must not contain games
 // that only work on the developer's already-populated asset cache.
-const collectAssetDeclarations = (bundleCoreDir, gameKey) => {
-    const localPlay = require(path.join(packageDirectory('homegames-common', bundleCoreDir), 'local-play.js'));
+const collectAssetDeclarations = (bundleCoreDir, gameKey) => require('./collect-local-assets').collectLocalAssets(bundleCoreDir, gameKey);
 
-    const byId = {};
-    const critical = new Set();
-
-    const addFromSource = (sourcePath, { includeTestGame = false, label }) => {
-        let meta;
-        try {
-            meta = localPlay.parseGameSourceMetadata(fs.readFileSync(sourcePath, 'utf8'));
-        } catch (e) {
-            throw new Error(`Could not read ${label}: ${e.message}`);
-        }
-        if (meta.error) {
-            throw new Error(`Could not parse metadata from ${label}: ${meta.error}`);
-        }
-        // Test games are hidden in bundles (TESTS_ENABLED false) — skip their
-        // assets unless one was explicitly configured as THE game.
-        if (meta.isTest && !includeTestGame) return;
-
-        for (const asset of meta.assets || []) {
-            if (!/^[a-f0-9]{32}$/.test(asset.id)) throw new Error(`Invalid asset ID in ${label}: ${asset.id}`);
-            byId[asset.id] = asset;
-            critical.add(asset.id);
-        }
-        if (meta.thumbnail) {
-            if (!/^[a-f0-9]{32}$/.test(meta.thumbnail)) throw new Error(`Invalid thumbnail ID in ${label}`);
-            byId[meta.thumbnail] = { id: meta.thumbnail, key: `${label}-thumbnail`, type: 'image' };
-            critical.add(meta.thumbnail);
-        }
-    };
-
-    // The frame is drawn around every session — its assets are non-negotiable.
-    addFromSource(path.join(bundleCoreDir, 'src', 'homegames_root', 'HomegamesRoot.js'), { label: 'HomegamesRoot' });
-
-    // Every built-in game, so an offline dashboard can launch any of them.
-    const gamesDir = path.join(bundleCoreDir, 'src', 'games');
-    for (const entry of fs.readdirSync(gamesDir)) {
-        const indexPath = path.join(gamesDir, entry, 'index.js');
-        if (!fs.existsSync(indexPath)) continue;
-        const isConfigured = entry === gameKey;
-        addFromSource(indexPath, { includeTestGame: isConfigured, label: entry });
-    }
-
-    for (const asset of DASHBOARD_ASSETS) {
-        byId[asset.id] = asset;
-        critical.add(asset.id);
-    }
-
-    return { assets: Object.values(byId), critical };
-};
-
-const prefetchAssets = async (bundleDir, bundleCoreDir, gameKey) => {
-    const { assets } = collectAssetDeclarations(bundleCoreDir, gameKey);
-    const assetsDir = path.join(bundleDir, 'assets');
-    fs.mkdirSync(assetsDir, { recursive: true });
-
-    log(`Prefetching ${assets.length} asset(s) for offline play…`);
-    const failures = [];
-    const fetched = [];
-    for (const asset of assets) {
-        const dest = path.join(assetsDir, asset.id);
-        if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
-            fetched.push(asset);
-            continue;
-        }
-        try {
-            await fetchAsset(asset.id, dest);
-            fetched.push(asset);
-        } catch (err) {
-            failures.push({ asset, err });
-            log(`  Warning: ${asset.key} (${asset.id}) failed: ${err.message}`);
-        }
-    }
-
-    if (failures.length) {
-        throw new Error(`${failures.length} required asset(s) could not be fetched: ${failures.map(f => `${f.asset.key} (${f.asset.id})`).join(', ')}`);
-    }
-
-    fs.writeFileSync(path.join(assetsDir, 'manifest.json'), JSON.stringify(
-        fetched.map(a => ({ id: a.id, key: a.key, type: a.type })), null, 2
-    ));
-    return fetched.length;
+const validateLocalAssets = async (bundleDir, bundleCoreDir, gameKey) => {
+    const { assets, localAssets } = collectAssetDeclarations(bundleCoreDir, gameKey);
+    if (assets.length) throw new Error(`Games still require hosted assets: ${assets.map(a => a.id).join(', ')}. Migrate them into their game folders before building.`);
+    // Keep the empty legacy inventory for existing launchers/verifiers. No
+    // asset service is contacted: all media is now copied with its owner.
+    const directory = path.join(bundleDir, 'assets'); fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'manifest.json'), '[]\n');
+    fs.writeFileSync(path.join(bundleDir, 'local-assets.json'), JSON.stringify(localAssets, null, 2) + '\n');
+    log(`Verified ${localAssets.length} local asset files; no content downloads required`);
+    return localAssets.length;
 };
 
 // --- Bundle config -------------------------------------------------------------
@@ -279,10 +197,11 @@ const writeBundleConfig = (bundleCoreDir, startPath) => {
         BUNDLED_ASSET_PATH: '../assets',
         LINK_ENABLED: false,
         HTTPS_ENABLED: false,
-        FORK_SESSIONS_ENABLED: true, // no Docker on a CD player's machine
+        FORK_SESSIONS_ENABLED: false, // host opts in through Server settings
         ERROR_REPORTING: false,
         TESTS_ENABLED: false,
         PUBLIC_GAMES: false,
+        RTC_SHARE_ORIGIN: 'local',
         IS_DEMO: false,
         SAVE_FILES_ENABLED: true,
         API_URL: 'https://api.homegames.io',
@@ -317,9 +236,8 @@ const downloadFile = async (url, dest) => {
     } finally { fs.rmSync(temporary, { force: true }); }
 };
 
-// Download (once) and extract (once) a platform's node binary into the build
-// cache, returning its path. The launcher build injects into these directly,
-// so they're cached extracted rather than re-untarred per build.
+// Verify the cached archive and refresh its extracted binary. Launcher
+// injection uses a separate copy and never modifies this runtime.
 const getRuntimeBinary = async (target) => {
     const { archive, binary } = RUNTIME_TARGETS[target];
     const cacheDir = process.env.HG_BUILD_CACHE || path.join(__dirname, 'dist', '.runtime-cache');
@@ -343,9 +261,16 @@ const getRuntimeBinary = async (target) => {
             execFileSync('unzip', ['-q', cached, `${archiveRoot}/${binary}`, `${archiveRoot}/LICENSE`, '-d', tmp]);
         } else execFileSync('tar', ['-xf', cached, '-C', tmp, `${archiveRoot}/${binary}`, `${archiveRoot}/LICENSE`]);
         fs.mkdirSync(path.dirname(binPath), { recursive: true });
-        fs.copyFileSync(path.join(tmp, archiveRoot, binary), binPath);
+        // The builder itself may be running from this cached Node. Replacing
+        // its contents in place can invalidate mapped executable pages on
+        // macOS. Publish a new inode instead, also avoiding partial binaries.
+        const nextBinary = binPath + '.' + crypto.randomUUID() + '.tmp';
+        try {
+            fs.copyFileSync(path.join(tmp, archiveRoot, binary), nextBinary);
+            fs.chmodSync(nextBinary, 0o755);
+            fs.renameSync(nextBinary, binPath);
+        } finally { fs.rmSync(nextBinary, { force: true }); }
         fs.copyFileSync(path.join(tmp, archiveRoot, 'LICENSE'), path.join(path.dirname(binPath), 'LICENSE'));
-        fs.chmodSync(binPath, 0o755);
         fs.rmSync(tmp, { recursive: true, force: true });
     }
     return binPath;
@@ -380,12 +305,35 @@ const POSTJECT_VERSION = '1.0.0-alpha.6';
 const MAC_APP_NAME = 'Play Mac.app';
 const MAC_APP_EXECUTABLE = 'Play Mac';
 
+// The Mac app must work when Finder translocates it or the player copies only
+// the app to Applications. Windows/Linux retain the ordinary portable layout.
+const writeMacPayload = (bundleDir, platforms) => {
+    const contents = path.join(bundleDir, MAC_APP_NAME, 'Contents');
+    const payload = path.join(contents, 'Resources', 'homegames');
+    fs.mkdirSync(payload, { recursive: true });
+    fs.copyFileSync(path.join(__dirname, 'build', 'icon.icns'), path.join(contents, 'Resources', 'Homegames.icns'));
+    for (const name of ['homegames', 'homegames-core', 'assets', 'local-assets.json',
+        'release-games.json', 'bundle-manifest.json', 'README.txt']) {
+        fs.cpSync(path.join(bundleDir, name), path.join(payload, name), { recursive: true });
+    }
+    for (const target of platforms.filter(p => p.startsWith('darwin-'))) {
+        const destination = path.join(contents, 'Helpers', `node-${target}`);
+        fs.mkdirSync(path.dirname(destination), { recursive: true });
+        fs.renameSync(path.join(bundleDir, 'runtimes', target, 'node'), destination);
+        // Helpers contains executable code only. Keep Node's license as a
+        // resource so codesign does not attempt to treat it as nested code.
+        fs.mkdirSync(path.join(payload, 'runtimes'), { recursive: true });
+        fs.renameSync(path.join(bundleDir, 'runtimes', target), path.join(payload, 'runtimes', target));
+    }
+};
+
 const MAC_APP_PLIST = (version) => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
     <key>CFBundleExecutable</key><string>${MAC_APP_EXECUTABLE}</string>
     <key>CFBundleIdentifier</key><string>io.homegames.play</string>
     <key>CFBundleName</key><string>Homegames</string>
+    <key>CFBundleIconFile</key><string>Homegames.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${version}</string>
     <key>LSMinimumSystemVersion</key><string>13.5</string>
@@ -440,6 +388,7 @@ const writeMacLauncher = async (bundleDir, platforms) => {
 
     const version = require('./package.json').version;
     fs.writeFileSync(path.join(appDir, 'Contents', 'Info.plist'), MAC_APP_PLIST(version));
+    writeMacPayload(bundleDir, platforms);
 
     // Ad-hoc sign so it runs at all on arm64 macs during local iteration;
     // --sign/--notarize replaces this with a Developer ID signature.
@@ -451,52 +400,66 @@ const writeMacLauncher = async (bundleDir, platforms) => {
 const writeLaunchers = async (bundleDir, gameKey, platforms) => {
     const title = gameKey || 'Homegames';
 
-    if (platforms.some(p => p.startsWith('darwin-'))) await writeMacLauncher(bundleDir, platforms);
-
     const winScript = `@echo off\r
 rem ${title} — double-click to play (Windows)\r
 cd /d "%~dp0"\r
-"runtimes\\win-x64\\node.exe" homegames\\index.js\r
+"runtimes\\win-x64\\node.exe" homegames\\index.js %*\r
 pause\r
 `;
     if (platforms.includes('win-x64')) fs.writeFileSync(path.join(bundleDir, 'Play Windows.bat'), winScript);
+    if (platforms.includes('win-x64')) fs.writeFileSync(path.join(bundleDir, 'Play Offline Windows.bat'), winScript.replace('index.js %*', 'index.js --offline %*'));
 
     const linuxScript = `#!/bin/sh
 # ${title} — run to play (Linux)
 cd "$(dirname "$0")" || exit 1
-exec "./runtimes/linux-x64/node" homegames/index.js
+exec "./runtimes/linux-x64/node" homegames/index.js "$@"
 `;
     if (platforms.includes('linux-x64')) fs.writeFileSync(path.join(bundleDir, 'play-linux.sh'), linuxScript, { mode: 0o755 });
+    if (platforms.includes('linux-x64')) fs.writeFileSync(path.join(bundleDir, 'play-offline-linux.sh'), linuxScript.replace('index.js "$@"', 'index.js --offline "$@"'), { mode: 0o755 });
 
     const readme = `${title}
 ${'='.repeat(title.length)}
 
 To play (included runtimes: ${platforms.join(', ') || 'none — development layout only; install Node.js to run homegames/index.js'}):
   First extract the ENTIRE ZIP. On Windows use Extract All; do not run inside the ZIP.
-  macOS disk image: copy the ENTIRE folder to your Mac, then eject the disk image.
-  Keep the launcher, runtimes, homegames-core, homegames and assets together.
+  macOS: copy Play Mac.app to Applications, then eject the disk image if used.
+  The Mac app includes its own runtimes, server and games; it can be moved on its own.
+  Windows/Linux: keep the launcher, runtimes, homegames-core, homegames and assets together.
   macOS 13.5 or newer: double-click "Play Mac"
            (if macOS asks about software downloaded from the internet, click Open)
   Windows: double-click "Play Windows.bat"
   Linux:   run ./play-linux.sh
 
 A browser opens at http://localhost:7001 with the dashboard or selected game.
-Built-in game assets are included. Catalog downloads and online services need internet.
+All built-in games and their media are included. Browsing and playing need no internet.
+Import a portable game ZIP using Import ZIP on this computer. Imported games and
+saves survive upgrades. On Windows/Linux you can also copy a game folder into
+homegames-core/src/games and restart; on Mac, keep the signed app contents unchanged.
 Windows requires 64-bit Windows 10 or newer. Linux needs x86-64, glibc 2.28+
 and kernel 4.18+; Linux ARM/Raspberry Pi and Alpine/musl are not included.
 
 Play together on your network (no internet needed):
   Anyone on the same wifi/LAN can join at http://<this computer's IP>:7001
 
-Optional — internet multiplayer via homegames.link:
-  Create (or edit) this file on your computer:
-    macOS:   ~/Library/Application Support/homegames/config.json
-    Windows: %APPDATA%\\homegames\\config.json
-    Linux:   ~/.homegames/config.json
-  with:
-    { "LINK_ENABLED": true, "HTTPS_ENABLED": true }
-  then relaunch. Discovery helps browsers on your own network find the server.
-  Certificate setup needs internet. Public internet play is a separate setting.
+Optional — easy LAN joining via homegames.link:
+  Open Server settings in the dashboard and choose Enable homegames.link.
+  The server requests a certificate in the background; local play stays available.
+  When it is ready, choose Restart to enable homegames.link.
+  Discovery and certificate setup/renewal need internet. Game content stays local.
+  homegames.link helps devices on your network find this server; it is not a relay.
+
+Fully offline after previously enabling online services:
+  Mac: choose Play Offline in the launcher window.
+  Windows: double-click Play Offline Windows.bat.
+  Linux: run ./play-offline-linux.sh.
+  This run uses HTTP and local RTC signaling, without changing saved preferences.
+  Online invitations use the configured signaling service; offline invitations
+  work on your LAN. Keep the host browser open for browser-hosted games.
+
+Your data stays on this computer:
+  macOS:   ~/Library/Application Support/homegames/
+  Windows: %APPDATA%\\homegames\\
+  Linux:   ~/.homegames/
 
 Troubleshooting:
   Allow Homegames/Node through your firewall on private networks only.
@@ -509,8 +472,10 @@ Troubleshooting:
 
 Everything on this disc is readable source — poke around!
 The server code lives in homegames-core/, the game in homegames-core/src/games/.
+On Mac these are inside Play Mac.app/Contents/Resources/homegames/.
 `;
     fs.writeFileSync(path.join(bundleDir, 'README.txt'), readme);
+    if (platforms.some(p => p.startsWith('darwin-'))) await writeMacLauncher(bundleDir, platforms);
 };
 
 // --- Codesign + notarize (macOS internet distribution) --------------------------
@@ -562,19 +527,12 @@ const signMacRuntimes = (bundleDir, identity) => {
     // node runtimes. Signing the .app path signs its main executable and
     // seals the bundle.
     const targets = [
-        ...['darwin-arm64', 'darwin-x64'].map(t => path.join(bundleDir, 'runtimes', t, 'node')),
+        ...['darwin-arm64', 'darwin-x64'].map(t => path.join(bundleDir, MAC_APP_NAME, 'Contents', 'Helpers', `node-${t}`)),
         path.join(bundleDir, MAC_APP_NAME),
     ].filter(fs.existsSync);
     if (!targets.length) {
         throw new Error('No mac runtimes in the bundle to sign — include darwin platforms when notarizing.');
     }
-
-    for (const target of targets) {
-        log(`Signing ${path.relative(bundleDir, target)}…`);
-        execFileSync('codesign', ['--force', '--options', 'runtime', '--timestamp',
-            '--entitlements', entitlementsFile, '--sign', identity, target], { stdio: 'inherit' });
-    }
-    fs.unlinkSync(entitlementsFile);
 
     // Native addons don't need JIT entitlements, just a valid signature with
     // a secure timestamp. Files copied from the source tree can be read-only;
@@ -584,6 +542,14 @@ const signMacRuntimes = (bundleDir, identity) => {
         fs.chmodSync(binary, 0o755);
         execFileSync('codesign', ['--force', '--options', 'runtime', '--timestamp', '--sign', identity, binary], { stdio: 'inherit' });
     }
+
+    // Sign nested code first, then seal the complete app last.
+    for (const target of targets) {
+        log(`Signing ${path.relative(bundleDir, target)}…`);
+        execFileSync('codesign', ['--force', '--options', 'runtime', '--timestamp',
+            '--entitlements', entitlementsFile, '--sign', identity, target], { stdio: 'inherit' });
+    }
+    fs.unlinkSync(entitlementsFile);
 
 };
 
@@ -598,12 +564,11 @@ const notarize = (bundleDir, { name, signIdentity, notaryProfile }) => {
     const dmgPath = `${bundleDir}.dmg`;
     log('Creating dmg…');
     fs.rmSync(dmgPath, { force: true });
-    // hdiutil copies a source folder's contents into the volume root. Stage a
-    // containing directory so users can copy ONE complete homegames folder,
-    // retaining the app's sibling runtime/server dependencies.
+    // Mac downloads contain the standalone app, not a folder of dependencies.
     const imageSource = fs.mkdtempSync(path.join(os.tmpdir(), 'hg-dmg-'));
     try {
-        fs.cpSync(bundleDir, path.join(imageSource, 'homegames'), { recursive: true });
+        fs.cpSync(path.join(bundleDir, MAC_APP_NAME), path.join(imageSource, MAC_APP_NAME), { recursive: true });
+        fs.copyFileSync(path.join(bundleDir, 'README.txt'), path.join(imageSource, 'README.txt'));
         execFileSync('hdiutil', ['create', '-volname', name, '-srcfolder', imageSource, '-ov', '-format', 'UDZO', dmgPath], { stdio: 'inherit' });
     } finally { fs.rmSync(imageSource, { recursive: true, force: true }); }
 
@@ -615,6 +580,9 @@ const notarize = (bundleDir, { name, signIdentity, notaryProfile }) => {
     log('Stapling ticket…');
     execFileSync('xcrun', ['stapler', 'staple', dmgPath], { stdio: 'inherit' });
     execFileSync('xcrun', ['stapler', 'validate', dmgPath], { stdio: 'inherit' });
+    // The ZIP is assembled afterward and gets its own copy of the app ticket.
+    execFileSync('xcrun', ['stapler', 'staple', path.join(bundleDir, MAC_APP_NAME)], { stdio: 'inherit' });
+    execFileSync('xcrun', ['stapler', 'validate', path.join(bundleDir, MAC_APP_NAME)], { stdio: 'inherit' });
 
     log(`Notarized dmg ready: ${dmgPath}`);
     return dmgPath;
@@ -643,11 +611,12 @@ const main = async () => {
     if (args.out === __dirname || args.out === CORE_DIR || args.out.startsWith(CORE_DIR + path.sep) || path.relative(args.out, CORE_DIR).split(path.sep)[0] !== '..') {
         throw new Error('The bundle output must not contain a source checkout.');
     }
-    // Rebuild from the current client and Squish sources; a stale dist file can
-    // otherwise make a successfully packaged server unusable in the browser.
+    // Use the bundle shipped with the installed client; release builds do not
+    // need that dependency's development tools or modify its installed files.
     const clientDir = packageDirectory('homegames-client', CORE_DIR);
-    log('Building the browser client…');
-    execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: clientDir, stdio: 'inherit' });
+    if (!fs.existsSync(path.join(clientDir, 'dist', 'homegames-client.js'))) {
+        throw new Error('Installed homegames-client is missing its browser bundle. Reinstall dependencies, or build the client if using a local development link.');
+    }
     log(`Building bundle at ${args.out}`);
     fs.mkdirSync(args.out, { recursive: true });
 
@@ -671,14 +640,17 @@ const main = async () => {
     fs.copyFileSync(path.join(__dirname, 'index.js'), path.join(supervisorDir, 'index.js'));
     fs.copyFileSync(path.join(__dirname, 'mac-launcher.js'), path.join(supervisorDir, 'mac-launcher.js'));
     fs.copyFileSync(path.join(__dirname, 'release-games.json'), path.join(args.out, 'release-games.json'));
+    for (const name of ['LICENSE.md', 'THIRD_PARTY_NOTICES.md']) {
+        fs.copyFileSync(path.join(__dirname, name), path.join(args.out, name));
+        fs.copyFileSync(path.join(__dirname, name), path.join(supervisorDir, name));
+    }
 
-    const assetCount = await prefetchAssets(args.out, bundleCoreDir, gameKey);
+    const assetCount = await validateLocalAssets(args.out, bundleCoreDir, gameKey);
 
     for (const target of args.platforms) {
         await installRuntime(target, args.out);
     }
 
-    await writeLaunchers(args.out, gameKey, args.platforms);
     fs.writeFileSync(path.join(args.out, 'bundle-manifest.json'), JSON.stringify({
         version: require('./package.json').version,
         nodeVersion: NODE_VERSION,
@@ -687,6 +659,7 @@ const main = async () => {
         assets: assetCount,
         builtAt: new Date().toISOString(),
     }, null, 2));
+    await writeLaunchers(args.out, gameKey, args.platforms);
 
     // Sign the mac runtimes BEFORE producing any images so the ISO carries
     // the signed binaries too.
@@ -714,7 +687,7 @@ const main = async () => {
     }
 };
 
-module.exports = { parseArgs, collectAssetDeclarations, copyCore, downloadFile, writeBundleConfig, writeLaunchers, RUNTIME_TARGETS };
+module.exports = { parseArgs, collectAssetDeclarations, copyCore, downloadFile, writeBundleConfig, writeLaunchers, writeMacPayload, RUNTIME_TARGETS };
 
 if (require.main === module) main().catch(err => {
     console.error('[build] FAILED');
